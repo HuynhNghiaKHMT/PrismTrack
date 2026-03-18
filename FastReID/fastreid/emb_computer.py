@@ -33,8 +33,21 @@ class EmbeddingComputer:
         for box in bbox_clip:
             # Get patch, BGR -> RGB, Resize
             crop = img[box[1]:box[3], box[0]:box[2]]
-            crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-            crop = cv2.resize(crop, self.crop_size, interpolation=cv2.INTER_LINEAR).astype(np.float32)
+            # crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            # crop = cv2.resize(crop, self.crop_size, interpolation=cv2.INTER_LINEAR).astype(np.float32)
+
+            # Fix empty crop
+            # =========================
+            if crop.size == 0 or crop.shape[0] == 0 or crop.shape[1] == 0:
+                # Tạo một ảnh đen giả lập có kích thước crop_size để không làm lỗi batch
+                crop = np.zeros((self.crop_size[1], self.crop_size[0], 3), dtype=np.uint8)
+            else:
+                # Xử lý bình thường nếu có dữ liệu
+                crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                crop = cv2.resize(crop, self.crop_size, interpolation=cv2.INTER_LINEAR)
+            
+            crop = crop.astype(np.float32)
+            # =========================
 
             # To Tensor, Append
             crop = torch.as_tensor(crop.transpose(2, 0, 1)).unsqueeze(0).cuda()

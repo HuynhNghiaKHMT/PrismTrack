@@ -72,6 +72,11 @@ class Tracker(object):
         [t.predict() for t in new]
 
         # dets_all = dets_high + dets_low + dets_del_high
+        # matches, u_tracks, u_dets = iterative_assignment(
+        #     tracked_lost, dets_high, dets_low, dets_del_high,
+        #     self.args.match_thr, self.args.penalty_p, self.args.penalty_q,
+        #     self.args.reduce_step, self.frame_id, d_t=3,use_reid=use_reid
+        # )
         matches, u_tracks, u_dets, dets_all = run_association(
             tracked_lost, dets_high, dets_low, dets_del_high,
             self.args, self.frame_id, use_reid
@@ -81,7 +86,8 @@ class Tracker(object):
             tracked_lost[t].update(self.frame_id, dets_all[d])
 
         for t in u_tracks:
-            tracked_lost[t].mark_lost()
+            # tracked_lost[t].mark_lost() # remove mark_lost because it in update_virtual
+            tracked_lost[t].update_virtual(self.frame_id) # add update_virtual ocsort
 
         dets_high_left = [dets_all[i] for i in u_dets if i < len(dets_high)]
 
@@ -135,7 +141,8 @@ class Tracker(object):
 
         # Change every track as lost tracks
         for t in self.tracks:
-            t.mark_lost()
+            # t.mark_lost() # remove mark_lost because it in update_virtual
+            t.update_virtual(self.frame_id)  # add update_virtual ocsort
             
         # Mark "remove" to lost tracks which are too old
         for track in self.tracks:

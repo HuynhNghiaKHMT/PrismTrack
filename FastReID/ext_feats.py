@@ -15,12 +15,12 @@ def make_parser():
     # parser.add_argument("--dataset", type=str, default="mot17")
     parser.add_argument("--dataset",default="MOT17",type=str,help="dataset for eval")
     parser.add_argument("--mode",default="val",type=str,help="mode for eval")
-    parser.add_argument("--nms", default=0.80, type=float, help="test nms threshold")
+    parser.add_argument("--nms", default=0.70, type=float, help="test nms threshold")
 
 
     parser.add_argument("--data_path", type=str, default="dataset/MOT17/test/")
-    parser.add_argument("--pickle_path", type=str, default="outputs/1. det/mot17_test_0.80.pickle")
-    parser.add_argument("--output_path", type=str, default="outputs/2. det_feat/mot17_test_0.80.pickle")
+    parser.add_argument("--pickle_path", type=str, default="outputs/1. det/mot17_test_0.70.pickle")
+    parser.add_argument("--output_path", type=str, default="outputs/2. det_feat/mot17_test_0.70.pickle")
     parser.add_argument("--config_path", type=str, default="FastReID/configs/MOT17/sbs_S50.yml")
     parser.add_argument("--weight_path", type=str, default="FastReID/weights/mot17_sbs_S50.pth")
 

@@ -1,11 +1,11 @@
 import os
 import shutil
 
-trackers = ['mot17_test', 'mot20_test']
+trackers = ['mot17_test_post']
 
 
 for tracker in trackers:
-    path = 'outputs/3. track/bytetrack/' + tracker + '/'
+    path = 'outputs/3. track/newtrack/' + tracker + '/'
     files = os.listdir(path)
 
     if 'mot17' in tracker:

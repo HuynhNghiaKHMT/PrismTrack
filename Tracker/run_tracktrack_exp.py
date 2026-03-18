@@ -23,6 +23,7 @@ def make_parser():
     parser.add_argument("--seed", type=float, default=10000)
 
     # Experiment Flags (Thêm theo yêu cầu của bạn)
+    parser.add_argument("--kf", type=str, default="old")   # old / new
     parser.add_argument("--assi", type=str, default="local")   # global / local
     parser.add_argument("--asso", type=str, default="joint")   # multi / joint
     parser.add_argument("--ddel", type=str, default="true")     # use Ddel

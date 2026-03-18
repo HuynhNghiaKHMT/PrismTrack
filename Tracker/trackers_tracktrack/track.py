@@ -1,6 +1,7 @@
 import numpy as np
-from trackers.utils import get_prev_box
-from trackers.kalman_filter import KalmanFilter
+from trackers_tracktrack.utils import get_prev_box
+from trackers_tracktrack.kalman_filter import KalmanFilter
+from trackers_tracktrack.kalman_filter_add_oc import HybridKalmanFilter
 
 
 def get_vel(b_1, b_2):
@@ -50,6 +51,8 @@ class BaseTrack(object):
 class Track(BaseTrack):
     def __init__(self, args, detection):
         # Initialize 1
+        self.start_frame_id = None # add
+        self.end_frame_id = 0 # bbd
         self.args = args
         self.box = detection[:4]  # x1y1x2y2
         self.score = detection[4]
@@ -66,7 +69,13 @@ class Track(BaseTrack):
         # self.feat = detection[6:][np.newaxis, :].copy()
         self.feat = detection[6:][np.newaxis, :].copy() if args.reid else None # change
 
-
+    # bbd
+    # ========================
+    def get_delta_tau(self, current_frame_id):
+        # delta_tau chính là khoảng cách thời gian
+        return max(1, current_frame_id - self.end_frame_id)
+    # ========================
+    
     def update_features(self, feat, score):
         # Update and normalize
         beta = self.alpha + (1 - self.alpha) * (1 - score)
@@ -76,9 +85,14 @@ class Track(BaseTrack):
     def initiate(self, frame_id, counter):
         # Get new track id
         self.track_id = counter.get_track_id()
+        self.start_frame_id = frame_id # add
 
         # Initiate Kalman filter
-        self.kalman_filter = KalmanFilter()
+        if self.args.kf == "old":
+            self.kalman_filter = KalmanFilter()
+        else:
+            self.kalman_filter = HybridKalmanFilter()
+            
         self.mean, self.covariance = self.kalman_filter.initiate(self.cxcywh.copy())
 
         # Initiate history
@@ -100,24 +114,49 @@ class Track(BaseTrack):
 
     def update(self, frame_id, detection):
         # Update Kalman filter & Feature
-        self.mean, self.covariance = self.kalman_filter.update(self.mean, self.covariance,
-                                                               detection.cxcywh.copy(), detection.score)
-        
-        # self.update_features(detection.feat.copy(), detection.score)
-        
+        self.mean, self.covariance = self.kalman_filter.update(
+            self.mean, self.covariance,                                                   
+            detection.cxcywh.copy(),
+            frame_id, 
+            detection.score)
+          
+        # update_features
+        # # self.update_features(detection.feat.copy(), detection.score)
         if self.args.reid:
             self.update_features(detection.feat.copy(), detection.score)
         else:
             self.feat = None
 
+        # Update Kalman filter's observed status and last observation
+        self.kalman_filter.observed = True 
+        self.kalman_filter.last_observation = detection.cxcywh.copy()
+        
         # Update history
         self.history[frame_id] = [detection.box.copy(), detection.score, self.mean.copy(),
                                   self.covariance.copy(), self.feat.copy()]
 
         # Update velocity
         self.velocity = np.zeros((4, 2))
+        # for d_t in range(1, self.delta_t + 1):
+        #     prev_box = get_prev_box(self.history, frame_id, d_t).copy()
+        
+        # Fix logic get_prev_box for OC-SORT: 
+        # ==================================================
+        # Lấy danh sách các frame có dữ liệu thực (loại bỏ các frame None của OC-SORT)
+        valid_history_keys = [k for k, v in self.history.items() if v is not None]
+        
         for d_t in range(1, self.delta_t + 1):
-            prev_box = get_prev_box(self.history, frame_id, d_t).copy()
+            target_key = frame_id - d_t
+            
+            # Nếu target_key có dữ liệu thực, dùng nó. 
+            # Nếu không (là None hoặc chưa có), dùng frame gần nhất có dữ liệu.
+            if target_key in valid_history_keys:
+                prev_box = self.history[target_key][0].copy()
+            else:
+                # Lấy frame gần nhất trong quá khứ mà valid
+                latest_valid_key = max([k for k in valid_history_keys if k < frame_id])
+                prev_box = self.history[latest_valid_key][0].copy()
+        # ==================================================
             self.velocity += get_vel(prev_box, detection.x1y1x2y2) / d_t
         self.velocity /= self.delta_t
 
@@ -126,6 +165,21 @@ class Track(BaseTrack):
         self.score = detection.score
         self.end_frame_id = frame_id
         self.state = TrackState.Tracked if len(self.history.keys()) >= self.args.min_len else TrackState.New
+
+    def update_virtual(self, frame_id):
+        """
+        Xử lý track khi bị mất dấu (Unmatched) theo cơ chế OC-SORT.
+        Thay thế cho hàm mark_lost cũ.
+        """
+        self.state = TrackState.Lost
+        
+        # 1. Lưu None vào history để đánh dấu frame này không có quan sát thực tế
+        # Việc này giúp Kalman Filter tính toán 'time_gap' chính xác khi re-match
+        self.history[frame_id] = None 
+        
+        # 2. Đánh dấu vào KF để dừng Smoothing (vì không có z để neo vào)
+        if hasattr(self.kalman_filter, 'observed'):
+            self.kalman_filter.observed = False
 
     @property
     def cxcywh(self):

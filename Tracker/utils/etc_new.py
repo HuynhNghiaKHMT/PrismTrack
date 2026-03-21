@@ -25,6 +25,7 @@ def set_parameters(args, vid_name, mode):
             args.det_high_thr, args.det_init_thr = 0.45, 0.55
         else:
             args.det_high_thr, args.det_init_thr = 0.60, 0.70
+
         args.match_thr = 0.70
 
     elif 'MOT20' in vid_name:
@@ -35,12 +36,13 @@ def set_parameters(args, vid_name, mode):
             args.pickle_path = args.pickle_dir + 'mot20_test_0.70.pickle'
             args.data_path = args.data_dir + 'MOT20/test/'
 
-        # if '08' in vid_name:
-        #     args.det_high_thr, args.det_init_thr = 0.30, 0.40
-        # if '04' in vid_name or '06' in vid_name or '07' in vid_name:
-        #     args.det_high_thr, args.det_init_thr = 0.40, 0.50
-        # else:
-        #     args.det_high_thr, args.det_init_thr = 0.40, 0.40
+        if '08' in vid_name:
+            args.det_high_thr, args.det_init_thr = 0.30, 0.40
+        if '04' in vid_name or '06' in vid_name or '07' in vid_name:
+            args.det_high_thr, args.det_init_thr = 0.40, 0.50
+        else:
+            args.det_high_thr, args.det_init_thr = 0.40, 0.40
+            
         args.match_thr = 0.55
 
     else:

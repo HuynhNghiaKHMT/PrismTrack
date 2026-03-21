@@ -1,1 +1,1 @@
-python Tracker/run_tracktrack_exp.py --dataset "MOT17" --mode "val" --cmc "true" --reid "true" --tai "true" --aflink "true" --gbi "true"
+python Tracker/run_tracktrack_exp.py --dataset "MOT17" --mode "val" --cmc "true" --reid "true" --gbi "true"

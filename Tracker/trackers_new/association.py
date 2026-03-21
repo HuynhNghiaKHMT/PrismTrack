@@ -120,6 +120,9 @@ def diou_distance(tracks, dets):
 
     return diou_sim, diou_dist
 
+# =========================================================
+# Linear (Hungarian Association)
+# =========================================================
 def linear_assignment(cost_matrix, thresh):
     if cost_matrix.size == 0:
         return np.empty((0, 2), dtype=int), tuple(range(cost_matrix.shape[0])), tuple(range(cost_matrix.shape[1]))
@@ -132,78 +135,39 @@ def linear_assignment(cost_matrix, thresh):
     unmatched_b = np.where(y < 0)[0]
     return np.asarray(matches), unmatched_a, unmatched_b
 
+def build_cost_stage0(tracks, dets, frame_id, use_reid):
+    """
+    C_final = 0.5 * C_HMIoU + 0.5 * C_Appr (nếu có ReID)
+    """
+    INF = 1e5
+    alpha = 0.5
 
-# def build_cost_stage1(tracks, dets, frame_id, use_reid):
-#     """
-#     C_final = 0.5 * C_HMIoU + 0.5 * C_Appr (nếu có ReID)
-#     """
-
-#     alpha = 0.5
-#     iou_sim, iou_dist = iou_distance(tracks, dets)
-#     diou_sim, diou_dist = diou_distance(tracks, dets)
-
-
-#     if use_reid:
-#         cos_dist = cos_distance(tracks, dets)
-#         cost = alpha * iou_dist + (1.0 - alpha) * cos_dist 
-
-#     else:
-#         cost = iou_dist
+    # MHIoU/ DIoU cost
+    iou_sim, iou_dist = diou_distance(tracks, dets)
 
 
-#     # DIoU gate
-#     cost[diou_sim <= 0.1] = 1.0
+    if use_reid:
+        cos_dist = cos_distance(tracks, dets)
+        cost = alpha * iou_dist + (1.0 - alpha) * cos_dist 
 
-#     ## IoU gate
-#     # cost[iou_sim <= 0.1] = 1.0
-
-#     return np.clip(cost, 0, 1)
-
-
-# def build_cost_stage1(tracks, dets, frame_id, use_reid):
-#     alpha = 0.5
-#     lambda_ = 0.98
-#     INF = 1e5
-
-#     # IoU
-#     iou_sim, iou_dist = iou_distance(tracks, dets)
-#     diou_sim, diou_dist = diou_distance(tracks, dets)
-
-#     # Appearance
-#     if use_reid:
-#         # cosine
-#         cos_dist = cos_distance(tracks, dets)
-
-#         # Mahalanobis
-#         maha_cost = Mahalanobis_distance(tracks, dets, diou_dist)
-
-#         # Combine cost
-#         cost = alpha * iou_dist + (1- alpha) * (lambda_ * cos_dist + (1 - lambda_) * maha_cost)
-#         # cost = alpha * diou_dist + (1 - alpha) * cos_dist
-
-#         # Kalman gating
-#         for i in range(len(tracks)):
-#             invalid = maha_cost[i] > 1.0  
-#             cost[i, invalid] = 1.0
-
-#     else:
-#         cost = diou_dist  # fallback
+    else:
+        cost = iou_dist
 
 
-    # # IoU gating (optional)
-    # cost[diou_sim <= 0.1] = 1.0
+    # MHIoU/ DIoU gate
+    cost[iou_sim <= 0.1] = INF
 
-    # return np.clip(cost, 0, 1)
+    return np.clip(cost, 0, 1)
 
 def build_cost_stage1(tracks, dets, frame_id, use_reid):
     alpha = 0.5
     lambda_ = 0.98
     INF = 1e5
 
-    # IoU
+    # MHIoU/ DIoU cost
     iou_sim, iou_dist = diou_distance(tracks, dets)
 
-    # Appearance
+    # Appearance cost
     if use_reid:
         # cosine
         cos_dist = cos_distance(tracks, dets)
@@ -214,23 +178,24 @@ def build_cost_stage1(tracks, dets, frame_id, use_reid):
         # cost = alpha * iou_dist + (1 - alpha) * (lambda_*cos_dist + (1-lambda_)*bbd_cost)
         cost = alpha * iou_dist + (1 - alpha) * cos_dist 
 
+
         # ===== REID GATING =====
-        bbd_threshold = 9.4877
+        bbd_threshold = 16
 
-        for i in range(len(tracks)):
-            for j in range(len(dets)):
+        # for i in range(len(tracks)):
+        #     for j in range(len(dets)):
 
-                # BBD gate
-                if bbd_cost[i, j] >= bbd_threshold:
-                    cost[i, j] = INF
-                    continue
+        #         # BBD gate
+        #         if bbd_cost[i, j] >= bbd_threshold:
+        #             cost[i, j] = INF
+        #             continue
 
 
     else:
         cost = iou_dist  
 
     
-    # IoU gating (optional)
+    # MHIoU/ DIoU gate
     cost[iou_sim <= 0.1] = INF
 
     return np.clip(cost, 0, 1)
@@ -241,18 +206,82 @@ def build_cost_stage2(tracks, dets):
     """
     INF = 1e5
 
-    # MHIoU cost
-    iou_sim, iou_dist = iou_distance(tracks, dets)
-    # cost = iou_dist
+    # MHIoU/ DIoU cost
+    iou_sim, iou_dist = diou_distance(tracks, dets)
 
-    # DIoU similarity
-    diou_sim, diou_dist  = diou_distance(tracks, dets)
-    cost = diou_dist
+    cost = iou_dist
 
-    # DIoU gate
-    cost[diou_sim <= 0.1] = INF
-    
-    # # IoU gate
-    # cost[iou_sim <= 0.1] = INF
+    # MHIoU/ DIoU gate
+    cost[iou_sim <= 0.1] = INF
+
+    return np.clip(cost, 0, 1)
+
+
+# =========================================================
+# TPA (Track-Perspective Association)
+# =========================================================
+def tpa_associate(cost, match_thr):
+    matches = []
+
+    if cost.shape[0] == 0 or cost.shape[1] == 0:
+        return matches
+
+    min_det = np.argmin(cost, axis=1)
+    min_track = np.argmin(cost, axis=0)
+
+    for t, d in enumerate(min_det):
+        if min_track[d] == t and cost[t, d] < match_thr:
+            matches.append([t, d])
+
+    return matches
+
+def tpa_assignment(cost, match_thr, reduce_step = 0.05):
+
+    matches = []
+    cost = cost.copy()
+
+    while True:
+        new_matches = tpa_associate(cost, match_thr)
+
+        if len(new_matches) == 0:
+            break
+
+        matches.extend(new_matches)
+
+        # remove matched rows & cols
+        for t, d in new_matches:
+            cost[t, :] = 1.0
+            cost[:, d] = 1.0
+
+        match_thr -= reduce_step
+
+    matched_t = [t for t, _ in matches]
+    matched_d = [d for _, d in matches]
+
+    u_tracks = [i for i in range(cost.shape[0]) if i not in matched_t]
+    u_dets   = [i for i in range(cost.shape[1]) if i not in matched_d]
+
+    return matches, u_tracks, u_dets
+
+def build_cost_stage12(tracks, dets_high, dets_low, frame_id, use_reid, penalty_p = 0.2):
+
+    dets = dets_high + dets_low
+
+    # MHIoU/ DIoU cost
+    iou_sim, iou_dist = diou_distance(tracks, dets)
+
+    if use_reid:
+        cos_dist = cos_distance(tracks, dets)
+        cost = 0.5 * iou_dist + 0.5 * cos_dist
+    else:
+        cost = iou_dist
+
+    # penalty for los dets 
+    if len(dets_low) > 0:
+        start = len(dets_high)
+        cost[:, start:] += penalty_p
+
+    # MHIoU/ DIoU gate
+    cost[iou_sim <= 0.1] = 1.0
 
     return np.clip(cost, 0, 1)

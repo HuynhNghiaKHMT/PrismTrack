@@ -26,9 +26,11 @@ def make_parser():
     parser.add_argument("--kf", type=str, default="old")   # old / new
 
     parser.add_argument("--cmc", type=str, default="true")
+    parser.add_argument("--dlo", type=str, default="true")
     parser.add_argument("--reid", type=str, default="true")
-    parser.add_argument("--tai", type=str, default="true")
-    parser.add_argument("--aflink", type=str, default="true")
+    parser.add_argument("--tpa", type=str, default="false")
+    parser.add_argument("--tai", type=str, default="false")
+    parser.add_argument("--aflink", type=str, default="false")
     parser.add_argument("--gbi", type=str, default="true")
 
     # Tracking Hyperparameters (Giữ nguyên từ file gốc)
@@ -42,7 +44,15 @@ def make_parser():
     parser.add_argument("--det_low_thr", type=float, default=0.0)
     parser.add_argument("--det_init_thr", type=float, default=0.7)
     parser.add_argument("--match_thr", type=float, default=0.8)
+
+    parser.add_argument("--dlo_boost_coef", type=float, default=0.65)
+    
+    parser.add_argument("--penalty_p", type=float, default=0.20)
+    parser.add_argument("--reduce_step", type=float, default=0.05)
     parser.add_argument("--tai_thr", type=float, default=0.85)
+
+   
+
 
     return parser
 
@@ -51,7 +61,9 @@ def str2bool(v):
 
 def track_experiment(args, detections, data_path, result_folder, mode):
     use_cmc = str2bool(args.cmc)
+    use_dlo = str2bool(args.dlo)
     use_reid = str2bool(args.reid)
+    use_tpa = str2bool(args.tpa)
     total_time, total_count = 0, 0
     
     for vid_name in detections.keys():
@@ -77,7 +89,7 @@ def track_experiment(args, detections, data_path, result_folder, mode):
                                
                 track_results = tracker.update(
                     detections[vid_name][frame_id],
-                    use_cmc, use_reid
+                    use_cmc, use_dlo, use_reid,use_tpa
                 )
             else:
                 track_results = tracker.update_without_detections()

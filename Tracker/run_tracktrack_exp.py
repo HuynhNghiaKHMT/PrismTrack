@@ -4,9 +4,9 @@ import pickle
 import argparse
 import random
 import time
-from trackers_tracktrack.tracker_exp import Tracker
+from tracktrack_exp.tracker import Tracker
 from utils.etc import *
-from trackers_tracktrack.utils import *
+from tracktrack_exp.utils import *
 from AFLink.AppFreeLink import *
 from AFLink.model import PostLinker
 from AFLink.dataset import LinkData
@@ -31,7 +31,7 @@ def make_parser():
     parser.add_argument("--cmc", type=str, default="true")
     parser.add_argument("--reid", type=str, default="true")
     parser.add_argument("--tai", type=str, default="true")
-    parser.add_argument("--aflink", type=str, default="true")
+    parser.add_argument("--aflink", type=str, default="false")
     parser.add_argument("--gbi", type=str, default="true")
 
     # Tracking Hyperparameters (Giữ nguyên từ file gốc)
@@ -46,7 +46,9 @@ def make_parser():
     # Bổ sung các tham số thường được set_parameters gọi
     parser.add_argument("--det_thr", type=float, default=0.6) # track_thresh 0.6 + 0.1
     parser.add_argument("--init_thr", type=float, default=0.7)
-    parser.add_argument("--match_thr", type=float, default=0.9)
+    parser.add_argument("--match_thr", type=float, default=0.8)
+
+    parser.add_argument("--hz", type=float, default=30, help="detection frequency (Hz)") 
 
     return parser
 
@@ -58,6 +60,7 @@ def track_experiment(args, detections, detections_95, data_path, result_folder, 
     use_reid = str2bool(args.reid)
 
     total_time, total_count = 0, 0
+    dt = 1 
     
     for vid_name in detections.keys():
         # Set proper parameters (Cập nhật pickle_path, data_path cho từng video)
@@ -67,7 +70,10 @@ def track_experiment(args, detections, detections_95, data_path, result_folder, 
         seq_info = open(data_path + vid_name + '/seqinfo.ini', mode='r')
         for s_i in seq_info.readlines():
             if 'frameRate' in s_i:
-                args.max_time_lost = int(s_i.split('=')[-1]) * 2
+                fps = int(s_i.split('=')[-1])  
+                dt = max(int(round(fps / args.hz)), 1)
+                args.max_time_lost = fps * 2
+                args.min_hits = max(1, int(3 * args.hz / fps))
             if 'imWidth' in s_i:
                 args.img_w = int(s_i.split('=')[-1])
             if 'imHeight' in s_i:
@@ -78,7 +84,7 @@ def track_experiment(args, detections, detections_95, data_path, result_folder, 
 
         for frame_id in detections[vid_name].keys():
             start = time.time()
-            if detections[vid_name][frame_id] is not None:
+            if (frame_id - 1) % dt == 0 and detections[vid_name][frame_id] is not None:
                                
                 track_results = tracker.update(
                     detections[vid_name][frame_id], 

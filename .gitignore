@@ -6,8 +6,19 @@ dataset/*
 Tracker/AFLink/*.pth
 outputs/*
 
-Tracker/hybirdsort
+Tracker/trackers/__pycache__/*.pyc
+Tracker/tracktrack_exp/__pycache__/*.pyc
+Tracker/newtrack/__pycache__/*.pyc
+Tracker/newtrack_oru/__pycache__/*.pyc
+Tracker/newtrack_tcm/__pycache__/*.pyc
+Tracker/newtrack_lowseq/__pycache__/*.pyc
+
+Tracker/code_hybirdsort
+Tracker/code_ocsort
 Tracker/trackers_bytetrack
 Tracker/run_bytetrack.py
 Tracker/run_bytetrack_exp.py
 yolo_version.csv
+
+Tracker/newtrack_lowseq
+Tracker/run_newtrack_lowseq.py

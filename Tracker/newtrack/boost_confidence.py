@@ -1,94 +1,48 @@
 import numpy as np
 from copy import deepcopy
 
+"""
+Script modified from BoostTrack++: 
+https://github.com/vukasin-stanojevic/BoostTrack
+"""
 
-# =========================================================
-# OBJECT → NUMPY ADAPTER
-# =========================================================
 def dets_to_xyxy(dets):
 
     # fix logic: too many indices for array: array is 1-dimensional, but 2 were indexed
-    # ===========================================
     if len(dets) == 0:
-        return np.zeros((0, 5), dtype=np.float32)
-    # ===========================================
+        return np.zeros((0, 5), dtype=np.float64)
 
-    arr = []
-    for d in dets:
-        cx, cy, w, h = d.cxcywh
-        x1 = cx - w / 2
-        y1 = cy - h / 2
-        x2 = cx + w / 2
-        y2 = cy + h / 2
-        # arr.append([x1, y1, x2, y2, d.score])
-        arr.append([x1, y1, x2, y2, d.score])
-
-    return np.array(arr, dtype=np.float32)
+    arr = [[d.cxcywh[0] - d.cxcywh[2]/2, d.cxcywh[1] - d.cxcywh[3]/2, 
+            d.cxcywh[0] + d.cxcywh[2]/2, d.cxcywh[1] + d.cxcywh[3]/2, 
+            d.score] for d in dets]
+    
+    return np.array(arr, dtype=np.float64)
 
 def tracks_to_xyxy(tracks, frame_id):
 
     # fix logic: too many indices for array: array is 1-dimensional, but 2 were indexed
-    # ===========================================
     if len(tracks) == 0:
-        return np.zeros((0, 6), dtype=np.float32)
-    # ===========================================
+        return np.zeros((0, 6), dtype=np.float64)
 
-    arr = []
-    for t in tracks:
-        cx, cy, w, h = t.cxcywh
-        x1 = cx - w / 2
-        y1 = cy - h / 2
-        x2 = cx + w / 2
-        y2 = cy + h / 2
+    arr = [[t.cxcywh[0] - t.cxcywh[2]/2, t.cxcywh[1] - t.cxcywh[3]/2, 
+            t.cxcywh[0] + t.cxcywh[2]/2, t.cxcywh[1] + t.cxcywh[3]/2, 
+            0.0, frame_id - t.end_frame_id] for t in tracks]
+    
+    return np.array(arr, dtype=np.float64)
 
-        # time_since_update (BoostTrack dùng)
-        tsu = frame_id - t.end_frame_id
+def iou_batch(a_tracks, b_tracks):
 
-        arr.append([x1, y1, x2, y2, 0, tsu])
-    return np.array(arr)
+    # a_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in a_tracks], dtype=np.float64)
+    # b_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in b_tracks], dtype=np.float64)
+    a_boxes = a_tracks
+    b_boxes = b_tracks
 
-def update_det_scores(dets, new_scores):
-    for i in range(len(dets)):
-        # dets[i].score = np.float32(new_scores[i])
-        dets[i].score = np.float32(new_scores[i])
-    return dets
+    if a_boxes.shape[0] == 0 or b_boxes.shape[0] == 0:
+        sim = np.zeros((a_boxes.shape[0], b_boxes.shape[0]), dtype=np.float64)
+        return sim, 1.0 - sim
 
-
-def shape_similarity(detects: np.ndarray, tracks: np.ndarray) -> np.ndarray:
-    return shape_similarity_v2(detects, tracks)
-
-
-def shape_similarity_v2(detects: np.ndarray, tracks: np.ndarray) -> np.ndarray:
-    if detects.size == 0 or tracks.size == 0:
-        return np.zeros((0, 0))
-
-    dw = (detects[:, 2] - detects[:, 0]).reshape((-1, 1))
-    dh = (detects[:, 3] - detects[:, 1]).reshape((-1, 1))
-    tw = (tracks[:, 2] - tracks[:, 0]).reshape((1, -1))
-    th = (tracks[:, 3] - tracks[:, 1]).reshape((1, -1))
-
-    return np.exp(-(np.abs(dw - tw)/np.maximum(dw, tw) + np.abs(dh - th)/np.maximum(dh, th)))
-
-
-def MhDist_similarity(mahalanobis_distance: np.ndarray, softmax_temp: float = 1.0) -> np.ndarray:
-    limit = 13.2767
-    mahalanobis_distance = deepcopy(mahalanobis_distance)
-
-    mask = mahalanobis_distance > limit
-    mahalanobis_distance[mask] = limit
-
-    mahalanobis_distance = limit - mahalanobis_distance
-
-    exp = np.exp(mahalanobis_distance / softmax_temp)
-    mahalanobis_distance = exp / exp.sum(0, keepdims=True)
-
-    mahalanobis_distance = np.where(mask, 0, mahalanobis_distance)
-    return mahalanobis_distance
-
-
-def iou_batch(bboxes1, bboxes2):
-    bboxes2 = np.expand_dims(bboxes2, 0)
-    bboxes1 = np.expand_dims(bboxes1, 1)
+    bboxes1 = np.expand_dims(a_boxes, 1)
+    bboxes2 = np.expand_dims(b_boxes, 0)
 
     xx1 = np.maximum(bboxes1[..., 0], bboxes2[..., 0])
     yy1 = np.maximum(bboxes1[..., 1], bboxes2[..., 1])
@@ -97,22 +51,31 @@ def iou_batch(bboxes1, bboxes2):
 
     w = np.maximum(0.0, xx2 - xx1)
     h = np.maximum(0.0, yy2 - yy1)
+    inter = w * h
 
-    wh = w * h
-    o = wh / (
-        (bboxes1[..., 2] - bboxes1[..., 0]) *
-        (bboxes1[..., 3] - bboxes1[..., 1]) +
-        (bboxes2[..., 2] - bboxes2[..., 0]) *
-        (bboxes2[..., 3] - bboxes2[..., 1]) - wh
-    )
+    area1 = (bboxes1[..., 2] - bboxes1[..., 0] ) * (bboxes1[..., 3] - bboxes1[..., 1] )
+    area2 = (bboxes2[..., 2] - bboxes2[..., 0] ) * (bboxes2[..., 3] - bboxes2[..., 1] )
+    union = area1 + area2 - inter
 
-    return o
+    iou_sim = inter / union + 1e-6
+    iou_dist = 1 - iou_sim
 
+    return iou_sim
 
-def soft_biou_batch(bboxes1, bboxes2):
-    bboxes2 = np.expand_dims(bboxes2, 0)
-    bboxes1 = np.expand_dims(bboxes1, 1)
+def soft_biou_batch(a_tracks, b_tracks):
 
+    # a_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in a_tracks], dtype=np.float64)
+    # b_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in b_tracks], dtype=np.float64)
+    a_boxes = a_tracks
+    b_boxes = b_tracks
+
+    if a_boxes.shape[0] == 0 or b_boxes.shape[0] == 0:
+        sim = np.zeros((a_boxes.shape[0], b_boxes.shape[0]), dtype=np.float64)
+        return sim, 1.0 - sim
+    
+    bboxes1 = np.expand_dims(a_boxes, 1)
+    bboxes2 = np.expand_dims(b_boxes, 0)
+    
     k1, k2 = 0.25, 0.5
     b2conf = bboxes2[..., 4]
 
@@ -134,15 +97,31 @@ def soft_biou_batch(bboxes1, bboxes2):
 
     w = np.maximum(0.0, xx2 - xx1)
     h = np.maximum(0.0, yy2 - yy1)
+    inter = w * h
 
-    wh = w * h
-    o = wh / (
-        (b1x2 - b1x1)*(b1y2 - b1y1) +
-        (b2x2 - b2x1)*(b2y2 - b2y1) - wh
-    )
+    area1 = (b1x2 - b1x1) * (b1y2 - b1y1)
+    area2 = (b2x2 - b2x1) * (b2y2 - b2y1)
+    union = area1 + area2 - inter + 1e-6
 
-    return o
+    iou_sim = inter / union
+    iou_dist = 1 - iou_sim
 
+    return iou_sim, iou_dist
+
+def shape_similarity(a_tracks, b_tracks):
+    if a_tracks.size == 0 or b_tracks.size == 0:
+        sim = np.zeros((a_tracks.shape[0], b_tracks.shape[0]), dtype=np.float64)
+        return sim, 1.0 - sim
+
+    dw = (a_tracks[:, 2] - a_tracks[:, 0]).reshape((-1, 1))
+    dh = (a_tracks[:, 3] - a_tracks[:, 1]).reshape((-1, 1))
+    tw = (b_tracks[:, 2] - b_tracks[:, 0]).reshape((1, -1))
+    th = (b_tracks[:, 3] - b_tracks[:, 1]).reshape((1, -1))
+
+    shape_sim = np.exp(-(np.abs(dw - tw)/np.maximum(dw, tw) + np.abs(dh - th)/np.maximum(dh, th)))
+    shape_dist = (1 - shape_sim)
+
+    return shape_sim, shape_dist
 
 def get_mh_dist_matrix(tracks, dets):
     if len(tracks) == 0 or len(dets) == 0:
@@ -157,12 +136,28 @@ def get_mh_dist_matrix(tracks, dets):
 
     return ((z[:, None, :] - x[None, :, :]) ** 2 * sigma_inv[None, :, :]).sum(axis=2)
 
+def mahalanobis_distance(mh_dist, softmax_temp = 1.0):
+    limit = 13.2767
+    dist = np.copy(mh_dist)
 
-def bbd_distance(dets, tracks, frame_id, alpha=0.025, beta=0.25, c=1.0):
+    mask = dist > limit
+    dist[mask] = limit
+
+    dist = limit - dist
+
+    exp = np.exp(dist / softmax_temp)
+    dist = exp / exp.sum(0, keepdims=True)
+
+    dist = np.where(mask, 0, dist)
+    return dist
+
+def bbox_based_distance(dets, tracks, frame_id, alpha=0.025, beta=0.25, c=1.0):
+    
     if len(tracks) == 0 or len(dets) == 0:
         return np.zeros((len(dets), len(tracks))) 
 
-    cost = np.zeros((len(dets), len(tracks)))
+    bbd_thress = 13.2767
+    bbd_dist = np.zeros((len(dets), len(tracks)))
 
     for j, d in enumerate(dets):
         for i, t in enumerate(tracks):
@@ -183,17 +178,78 @@ def bbd_distance(dets, tracks, frame_id, alpha=0.025, beta=0.25, c=1.0):
             dist = diff.T @ P_inv @ diff
             dist = np.sqrt(dist)
 
-            cost[j, i] = dist 
+            bbd_dist[j, i] = dist 
 
-    return cost
+    bbd_sim = np.exp(-bbd_dist / 4)
+    bbd_sim[bbd_dist > bbd_thress] = 0
 
+    return bbd_sim, bbd_dist
 
-def duo_confidence_boost(dets, tracks, frame_id, iou_limit, det_thresh):
+def update_det_scores(dets, new_scores):
+    for i in range(len(dets)):
+        dets[i].score = np.float32(new_scores[i])
+    return dets
+
+def dlo_confidence_boost(dets, tracks, dlo_boost_coef, det_thresh, frame_id, use_rich_s, use_sb, use_vt, use_bbd):
+    detections = dets_to_xyxy(dets)
+    trackers = tracks_to_xyxy(tracks, frame_id)
+    bbd_thress = 13.2767
+
+    if len(trackers) == 0 or len(detections) == 0:
+        return dets
+
+    if use_bbd: 
+        bbd_sim, _ = bbox_based_distance(dets, tracks, frame_id)
+        dist_sim = bbd_sim
+    else:
+        mh_dist = get_mh_dist_matrix(tracks, dets)
+        dist_sim = mahalanobis_distance(mh_dist, 1.0)
+
+    if use_rich_s:
+        sbiou_sim, sbiou_dist = soft_biou_batch(detections, trackers)
+        shape_sim, shape_dist = shape_similarity(detections, trackers)
+
+        S = (dist_sim + shape_sim + sbiou_sim) / 3
+    else:
+        S = iou_batch(detections, trackers)
+
+    if not use_sb and not use_vt:
+        max_s = S.max(1)
+        coef = dlo_boost_coef
+        detections[:, 4] = np.maximum(detections[:, 4], max_s * coef)
+
+    else:
+        if use_sb:
+            max_s = S.max(1)
+            alpha = 0.65
+            detections[:, 4] = np.maximum(detections[:, 4], alpha * detections[:, 4] + (1 - alpha) * max_s ** 1.5
+            )
+
+        if use_vt:
+            threshold_s = 0.95
+            threshold_e = 0.8
+            n_steps = 20
+
+            alpha = (threshold_s - threshold_e) / n_steps
+
+            tsu = trackers[:, 5]
+            th = np.maximum(threshold_s - tsu * alpha, threshold_e)
+
+            tmp = (S > th).max(1)
+
+            scores = deepcopy(detections[:, 4])
+            scores[tmp] = np.maximum(scores[tmp], det_thresh + 1e-5)
+
+            detections[:, 4] = scores
+
+    return update_det_scores(dets, detections[:, 4])
+
+def duo_confidence_boost(dets, tracks, iou_limit, det_thresh, frame_id, use_bbd):
     detections = dets_to_xyxy(dets)
     limit = 13.2767
 
     if use_bbd: 
-        dist = bbd_distance(dets, tracks, frame_id)  
+        dist = bbox_based_distance(dets, tracks, frame_id)  
     else:
         dist = get_mh_dist_matrix(tracks, dets) 
 
@@ -227,92 +283,99 @@ def duo_confidence_boost(dets, tracks, frame_id, iou_limit, det_thresh):
 
     return update_det_scores(dets, detections[:, 4])
 
-
-def dlo_confidence_boost(dets, tracks,  frame_id, use_rich_s, use_sb, use_vt, dlo_boost_coef, det_thresh ):
+def duo_confidence_boost_v2(dets, tracks, iou_limit, det_thresh, frame_id, use_bbd):
+    
     detections = dets_to_xyxy(dets)
-    trackers = tracks_to_xyxy(tracks, frame_id)
-    bbd_thress = 13.2767
-
-    if len(trackers) == 0 or len(detections) == 0:
+    
+    if len(tracks) == 0:
         return dets
-
+    
     if use_bbd: 
-        bbd_dist = bbd_distance(dets, tracks, frame_id)
-        bbd_sim = np.exp(-bbd_dist / 4)
-        bbd_sim[bbd_dist > bbd_thress] = 0
-        dist = bbd_sim
+        _, bbd_dist = bbox_based_distance(dets, tracks, frame_id)  
+        dist = bbd_dist
     else:
-        mh = MhDist_similarity(get_mh_dist_matrix(tracks, dets), 1.0)
-        dist = mh
+        dist = get_mh_dist_matrix(tracks, dets) 
 
-    if use_rich_s:
-        sbiou = soft_biou_batch(detections, trackers)
-        shape = shape_similarity(detections, trackers)
 
-        S = (dist + shape + sbiou) / 3
-    else:
-        S = iou_batch(detections, trackers)
+    # Lấy ma trận khoảng cách và IoU để kiểm tra sự tranh chấp
+    iou_sim = iou_batch(detections, tracks_to_xyxy(tracks, frame_id))
 
-    if not use_sb and not use_vt:
-        max_s = S.max(1)
-        coef = dlo_boost_coef
-        detections[:, 4] = np.maximum(detections[:, 4], max_s * coef)
+    if dist.size > 0:
+        min_dists = dist.min(1)
+        max_ious = iou_sim.max(1)
 
-    else:
-        if use_sb:
-            max_s = S.max(1)
-            alpha = 0.65
-            detections[:, 4] = np.maximum(
-                detections[:, 4],
-                alpha * detections[:, 4] + (1 - alpha) * max_s ** 1.5
-            )
+        # CHIẾN THUẬT PHÒNG THỦ:
+        # - min_dists > 13.2767: Quá xa các track cũ
+        # - detections[:, 4] < det_thresh: Điểm thấp (cần cứu)
+        # - max_ious < 0.1: QUAN TRỌNG - Nếu dính líu (IoU) với track cũ, 
+        #   để DLO lo hoặc bỏ qua, DUO không được tạo ID mới ở đây.
+        mask = (min_dists > 13.2767) & (detections[:, 4] < det_thresh) & (max_ious < 0.1)
+        
+        boost_idx = np.where(mask)[0]
+        boost_dets = detections[mask]
 
-        if use_vt:
-            threshold_s = 0.95
-            threshold_e = 0.8
-            n_steps = 20
+        if len(boost_dets) > 0:
+            # NMS nội bộ cực gắt để tránh x2, x3 ID cho cùng một vùng nhiễu
+            bdiou = iou_batch(boost_dets, boost_dets) - np.eye(len(boost_dets))
+            bdiou_max = bdiou.max(axis=1)
 
-            alpha = (threshold_s - threshold_e) / n_steps
+            # Giữ lại những box đơn độc
+            remaining_indices = boost_idx[bdiou_max <= iou_limit]
+            
+            # Xử lý các cụm chồng lấn: Chỉ chọn thằng tốt nhất
+            overlap_args = np.where(bdiou_max > iou_limit)[0]
+            processed = set()
+            for i in overlap_args:
+                if i in processed: continue
+                neighbors = np.where(bdiou[i] > iou_limit)[0]
+                group = np.append(neighbors, i)
+                
+                # Trong một cụm nhiễu, chỉ chọn 1 đại diện có score cao nhất
+                actual_group_idx = boost_idx[group]
+                best_idx = actual_group_idx[np.argmax(detections[actual_group_idx, 4])]
+                remaining_indices = np.unique(np.append(remaining_indices, best_idx))
+                processed.update(group)
 
-            tsu = trackers[:, 5]
-            th = np.maximum(threshold_s - tsu * alpha, threshold_e)
-
-            tmp = (S > th).max(1)
-
-            scores = deepcopy(detections[:, 4])
-            scores[tmp] = np.maximum(scores[tmp], det_thresh + 1e-5)
-
-            detections[:, 4] = scores
+            # Cập nhật điểm số
+            final_mask = np.zeros(len(detections), dtype=bool)
+            final_mask[remaining_indices.astype(int)] = True
+            detections[:, 4] = np.where(final_mask, det_thresh + 1e-4, detections[:, 4])
 
     return update_det_scores(dets, detections[:, 4])
 
-
-use_dlo_boost = True
-use_duo_boost = True
-use_bbd = True
-use_rich_s = True
-use_sb = True
-use_vt = True
-dlo_boost_coef = 0.65 # 0.5 for MOT20
-det_thresh = 0.6 # 0.4 for MOT20
-iou_limit = 0.3 # 0.2
-
-def apply_boost(dets, tracks, frame_id, use_dlo_boost, use_duo_boost):
+def IDCBoost(dets, tracks, dlo_boost_coef, det_thresh, iou_limit, frame_id, use_dlo, use_duo):
+    """
+    STEP 1: DLO (Detection of Likely Objects):
+    Objective: Rescue tracked objects that are hidden (low score)
+    
+    TEP 2: DUO (Detection of Unobserved Objects):
+    Objective: Identify newly appearing objects that the detector is not yet confident in.
+    IMPORTANT: DUO only works on detections with a score < det_thresh.
+    (That is, objects that DLO cannot recover or are not related to the old track)
+    """
 
     if len(dets) == 0:
         return dets
     
-    if use_dlo_boost: 
+    # DLO (Detection of Likely Objects) 
+    if use_dlo:
+        use_bbd = True
+        use_rich_s = True
+        use_sb = True
+        use_vt = True
         dets = dlo_confidence_boost(
-            dets, tracks, frame_id,
-            use_rich_s, use_sb, use_vt,
-            dlo_boost_coef, det_thresh
+            dets, tracks, 
+            dlo_boost_coef, det_thresh, frame_id,
+            use_rich_s, use_sb, use_vt, use_bbd
         )
 
-
-    if use_duo_boost: 
-        dets = duo_confidence_boost(
-            dets, tracks, frame_id, iou_limit, det_thresh
+    # DUO (Detection of Unobserved Objects)
+    if use_duo:
+        use_bbd = False
+        dets = duo_confidence_boost_v2(
+            dets, tracks, 
+            iou_limit, det_thresh, frame_id, 
+            use_bbd
         )
 
     return dets

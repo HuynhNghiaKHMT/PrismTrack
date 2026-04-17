@@ -2,72 +2,8 @@ import numpy as np
 from newtrack.utils import *
 from newtrack.kalman_filter_hybird import *
 
-
-def Mahalanobis_distance(tracks, dets, iou_dist):
-    if len(tracks) > 0 and len(dets) > 0:
-        measurements = np.array([d.cxcywh for d in dets])
-        maha_cost = np.zeros_like(iou_dist)
-
-        gating_threshold = 9.4877  # chi2inv95[4]
-        # gating_threshold = 16.919  # chi2inv95[9]
-
-        for i, track in enumerate(tracks):
-            d = track.kalman_filter.gating_distance(
-                track.mean,
-                track.covariance,
-                measurements,
-                only_position=False
-            )
-
-            # Gating (TRƯỚC khi normalize)
-            invalid = d > gating_threshold
-
-            # Normalize
-            d = d / gating_threshold
-            d = np.clip(d, 0, 1)
-
-            d[invalid] = 1.0  # hoặc 1.0 nếu bạn muốn hard gating
-
-            maha_cost[i] = d
-
-    else:
-        maha_cost = np.zeros_like(iou_dist)
-
-    return maha_cost
-
-def bbd_distance(tracks, dets, frame_id, alpha=0.025, beta=0.25, c=1.0):
-    if len(tracks) == 0 or len(dets) == 0:
-        return np.zeros((len(tracks), len(dets)))
-
-    cost = np.zeros((len(tracks), len(dets)))
-
-    for i, t in enumerate(tracks):
-        mean = t.cxcywh
-        w, h = mean[2], mean[3]
-
-        dt = np.clip(t.get_delta_tau(frame_id), alpha, beta)
-
-        P = np.array([
-            [(c * w) ** 2 * dt, 0],
-            [0, (c * h) ** 2 * dt]
-        ])
-
-        P_inv = np.linalg.inv(P)
-
-        for j, d in enumerate(dets):
-            z = d.cxcywh
-
-            diff = z[:2] - mean[:2]
-
-            dist = diff.T @ P_inv @ diff
-            dist = np.sqrt(dist)  
-
-            cost[i, j] = dist
-
-    return cost
-
 # =========================================================
-# Linear (Hungarian Association)
+# Hungarian (Linear Association)
 # =========================================================
 def linear_assignment(cost_matrix, thresh):
     if cost_matrix.size == 0:
@@ -87,10 +23,8 @@ def linear_assignment(cost_matrix, thresh):
 
 def build_cost_stage1(tracks, dets, frame_id, use_reid):
     """
-    C_final = 0.5 * C_HMIoU + 0.5 * C_Appr (nếu có ReID)
+    C_final = W_1 * C_IoU + W_2 * C_Appr
     """
-    alpha = 0.5
-    lambda_ = 0.98
 
     # MHIoU/ DIoU cost
     iou_sim, iou_dist = diou_distance(tracks, dets)
@@ -98,27 +32,9 @@ def build_cost_stage1(tracks, dets, frame_id, use_reid):
     # Appearance cost
     if use_reid:
         # cosine
+        alpha = 0.5
         cos_dist = cos_distance(tracks, dets)
-
-        # BBD
-        bbd_cost = bbd_distance(tracks, dets, frame_id)
-
-        # cost = alpha * iou_dist + (1 - alpha) * (lambda_*cos_dist + (1-lambda_)*bbd_cost)
         cost = alpha * iou_dist + (1 - alpha) * cos_dist 
-
-        # ===== REID GATING =====
-        bbd_threshold = 16
-
-        # for i in range(len(tracks)):
-        #     for j in range(len(dets)):
-
-        #         # BBD gate
-        #         if bbd_cost[i, j] >= bbd_threshold:
-        #             cost[i, j] = 1.0
-        #             continue
-        
-        # cost += 0.1 * conf_distance_kf(tracks, dets) + 0.05 * angle_distance(tracks, dets, frame_id, 3) # HMIoU
-        # cost += 0.05 * angle_distance(tracks, dets, frame_id, 3) # DIou
     else:
         cost = iou_dist
         
@@ -130,25 +46,24 @@ def build_cost_stage1(tracks, dets, frame_id, use_reid):
 
 def build_cost_stage2(tracks, dets, frame_id):
     """
-    C_final = 1 - HMIoU
+    C_final = W_1 * C_IoU + W_2 * C_Vel + W_3 * Conf
     """
 
     # MHIoU/ DIoU cost
     iou_sim, iou_dist = diou_distance(tracks, dets)
     cost = iou_dist
 
-    # cost += 0.25 * conf_distance_linear(tracks, dets) # HMIoU
-    # cost += 0.1 * conf_distance_linear(tracks, dets) # DIoU
-    cost += 0.1 * conf_distance_linear(tracks, dets)  + 0.05 * angle_distance(tracks, dets, frame_id, 3) # DLO 0.2, no * score
+    cost += 0.1 * conf_distance_linear(tracks, dets)
+    cost += 0.05 * angle_distance(tracks, dets, frame_id, 3)
 
     # MHIoU/ DIoU gate
     cost[iou_sim <= 0.1] = 1.0
 
     return np.clip(cost, 0, 1)
 
-def build_cost_stage3(tracks, dets):
+def build_cost_stage3(tracks, dets, frame_id):
     """
-    C_final = 1 - HMIoU
+    C_final = C_IoU
     """
 
     # MHIoU/ DIoU cost
@@ -161,71 +76,75 @@ def build_cost_stage3(tracks, dets):
     return np.clip(cost, 0, 1)
 
 # =========================================================
-# TPA (Track-Perspective Association)
+# Track-Perspective (Iterative Association)
 # =========================================================
-def tpa_associate(cost, match_thr):
+def associate(cost, match_thr):
+    # Initialization
     matches = []
 
-    if cost.shape[0] == 0 or cost.shape[1] == 0:
-        return matches
+    # Run
+    if cost.shape[0] > 0 and cost.shape[1] > 0:
+        # Get index for minimum similarity
+        min_ddx = np.argmin(cost, axis=1)
+        min_tdx = np.argmin(cost, axis=0)
 
-    min_det = np.argmin(cost, axis=1)
-    min_track = np.argmin(cost, axis=0)
-
-    for t, d in enumerate(min_det):
-        if min_track[d] == t and cost[t, d] < match_thr:
-            matches.append([t, d])
+        # Match tracks with detections
+        for tdx, ddx in enumerate(min_ddx):
+            if min_tdx[ddx] == tdx and cost[tdx, ddx] < match_thr:
+                matches.append([tdx, ddx])
 
     return matches
 
-def tpa_assignment(cost, match_thr, reduce_step = 0.05):
+def build_cost_stage12(tracks, dets_high, dets_low, penalty_p, frame_id, use_reid):
+    """
+    C_final = W_1 * C_IoU +  W_2 * C_Appr + W_3 * C_Vel +  W_4 * C_Conf
+    """
 
-    matches = []
-    cost = cost.copy()
-
-    while True:
-        new_matches = tpa_associate(cost, match_thr)
-
-        if len(new_matches) == 0:
-            break
-
-        matches.extend(new_matches)
-
-        # remove matched rows & cols
-        for t, d in new_matches:
-            cost[t, :] = 1.0
-            cost[:, d] = 1.0
-
-        match_thr -= reduce_step
-
-    matched_t = [t for t, _ in matches]
-    matched_d = [d for _, d in matches]
-
-    u_tracks = [i for i in range(cost.shape[0]) if i not in matched_t]
-    u_dets   = [i for i in range(cost.shape[1]) if i not in matched_d]
-
-    return matches, u_tracks, u_dets
-
-def build_cost_stage12(tracks, dets_high, dets_low, frame_id, use_reid, penalty_p = 0.2):
-
-    dets = dets_high + dets_low
-
+    dets = dets_high + dets_low 
+    
     # MHIoU/ DIoU cost
     iou_sim, iou_dist = diou_distance(tracks, dets)
+    cos_dist = cos_distance(tracks, dets)
 
+    # Appearance cost
     if use_reid:
-        cos_dist = cos_distance(tracks, dets)
-        cost = 0.5 * iou_dist + 0.5 * cos_dist
-        cost += 0.1 * conf_distance_linear(tracks, dets) + 0.05 * angle_distance(tracks, dets, frame_id, 3)
+        alpha = 0.45
+        cost = alpha * iou_dist + (1.0 - alpha) * cos_dist
     else:
-        cost = iou_dist
+        cost = cos_dist
 
-    # penalty for los dets 
-    # if len(dets_low) > 0:
-    #     start = len(dets_high)
-    #     cost[:, start:] += penalty_p
+    # Confidence/ Velocity cost
+    # cost += 0.05 * conf_distance_linear(tracks, dets)
+    cost += 0.1 * angle_distance(tracks, dets, frame_id, 3)
 
-    # MHIoU/ DIoU gate
+    # Penalty for dets_low, give priority to dets_high. Although the IoU of the Low-conf may be slightly higher.
+    cost[:, len(dets_high):] += penalty_p 
+
+    # Gating
     cost[iou_sim <= 0.1] = 1.0
 
     return np.clip(cost, 0, 1)
+
+def iterative_assignment(cost, match_thr, reduce_step, tracks, dets):
+    
+    # Iterative Association
+    # Lower the threshold to continue searching if there is no longer a match with any of these objects.
+    matches = []
+    temp_match_thr = match_thr
+    while temp_match_thr > 0:
+        matches_ = associate(cost, temp_match_thr)
+        if len(matches_) == 0: 
+            temp_match_thr -= reduce_step
+            continue
+            
+        matches += matches_
+        for t, d in matches_:
+            cost[t, :] = 1.0  
+            cost[:, d] = 1.0
+
+    m_tracks = [t for t, _ in matches]
+    u_tracks = [t for t in range(len(tracks)) if t not in m_tracks]
+    m_dets = [d for _, d in matches]
+    u_dets = [d for d in range(len(dets)) if d not in m_dets]
+
+    return matches, u_tracks, u_dets

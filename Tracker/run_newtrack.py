@@ -13,9 +13,16 @@ from AFLink.model import PostLinker
 from AFLink.dataset import LinkData
 from utils.gbi import gb_interpolation
 
+"""
+Script modified from TrackTrack: 
+https://github.com/kamkyu94/TrackTrack
+"""
+
+
 def make_parser():
     parser = argparse.ArgumentParser("TrackTrack Experiment")
-    # Basic Path Args (Giữ nguyên từ file gốc)
+    
+    # Basic Path Args
     parser.add_argument("--pickle_dir", type=str, default="outputs/2. det_feat/")
     parser.add_argument("--output_dir", type=str, default="outputs/3. track/newtrack/")
     parser.add_argument("--data_dir", type=str, default="dataset/")
@@ -23,34 +30,34 @@ def make_parser():
     parser.add_argument("--mode", type=str, default="val")
     parser.add_argument("--seed", type=float, default=10000)
 
-    # Experiment Flags (Thêm theo yêu cầu của bạn)
+    # Experiment Flags
     parser.add_argument("--kf", type=str, default="new")   
-
     parser.add_argument("--cmc", type=str, default="true")
-    parser.add_argument("--dlo", type=str, default="true")
+    parser.add_argument("--idcboost", type=str, default="true")
     parser.add_argument("--reid", type=str, default="true")
-    parser.add_argument("--tpa", type=str, default="false")
-    parser.add_argument("--tai", type=str, default="false")
-    parser.add_argument("--aflink", type=str, default="false")
+    parser.add_argument("--tpa", type=str, default="true")
+    parser.add_argument("--aflink", type=str, default="true")
     parser.add_argument("--gbi", type=str, default="true")
 
-    # Tracking Hyperparameters (Giữ nguyên từ file gốc)
+    # Tracking Hyperparameters
     parser.add_argument("--min_hits", type=int, default=3)
     parser.add_argument("--min_box_area", type=float, default=100)
     parser.add_argument("--max_age", type=float, default=30)
 
-    
-    # Bổ sung các tham số thường được set_parameters
+    # Mutil-Stage Hyperparameters
     parser.add_argument("--det_high_thr", type=float, default=0.6)
     parser.add_argument("--det_low_thr", type=float, default=0.0)
     parser.add_argument("--det_init_thr", type=float, default=0.7)
     parser.add_argument("--match_thr", type=float, default=0.8)
 
+    # IDCBoost Hyperparameters
+    parser.add_argument("--iou_limit", type=float, default=0.3)
+    parser.add_argument("--det_thr", type=float, default=0.6)
     parser.add_argument("--dlo_boost_coef", type=float, default=0.65)
-    
+
+    # Track Perspective Hyperparameters
     parser.add_argument("--penalty_p", type=float, default=0.20)
     parser.add_argument("--reduce_step", type=float, default=0.05)
-    parser.add_argument("--tai_thr", type=float, default=0.85)
 
     return parser
 
@@ -59,13 +66,13 @@ def str2bool(v):
 
 def track_experiment(args, detections, data_path, result_folder, mode):
     use_cmc = str2bool(args.cmc)
-    use_dlo = str2bool(args.dlo)
+    use_idcboost = str2bool(args.idcboost)
     use_reid = str2bool(args.reid)
     use_tpa = str2bool(args.tpa)
     total_time, total_count = 0, 0
     
     for vid_name in detections.keys():
-        # Set proper parameters (Cập nhật pickle_path, data_path cho từng video)
+        # Set proper parameters
         set_parameters(args, vid_name, mode)
 
         # Set max time lost
@@ -87,7 +94,7 @@ def track_experiment(args, detections, data_path, result_folder, mode):
                                
                 track_results = tracker.update(
                     detections[vid_name][frame_id],
-                    use_cmc, use_dlo, use_reid, use_tpa
+                    use_cmc, use_idcboost, use_reid, use_tpa
                 )
             else:
                 track_results = tracker.update_without_detections()
@@ -95,7 +102,7 @@ def track_experiment(args, detections, data_path, result_folder, mode):
             total_time += time.time() - start
             total_count += 1
 
-            # Filter results (Giữ nguyên logic gốc)
+            # Filter results
             x1y1whs, track_ids, scores = [], [], []
             for t in track_results:
                 # Check aspect ratio
@@ -110,14 +117,14 @@ def track_experiment(args, detections, data_path, result_folder, mode):
 
             results.append([frame_id, track_ids, x1y1whs, scores])
 
-        # Write kết quả thô
+        # Write Results
         result_filename = os.path.join(result_folder, f'{vid_name}.txt')
         write_results(result_filename, results)
 
     return total_time, total_count
 
 def run():
-    # Khởi tạo AFLink (Giữ nguyên gốc)
+    # initialize AFLink
     model = PostLinker()
     model.load_state_dict(torch.load('Tracker/AFLink/AFLink_epoch20.pth', map_location='cpu'))
     aflink_dataset = LinkData('', '')
@@ -137,14 +144,14 @@ def run():
     else:
         args.pickle_dir = "outputs/1. det/"
 
-    # Đọc detection (Sử dụng pickle_path đã được set_parameters cập nhật hoặc từ dir)
+    # Read file detection.pickle 
     with open(args.pickle_path, 'rb') as f:
         detections = pickle.load(f)
 
-    # Chạy Tracking
+    # Run Tracking
     total_time, total_count = track_experiment(args, detections, args.data_path, result_folder, args.mode)
 
-    # Post-processing (Tích hợp Flags)
+    # Post-processing
     print('Running post-processing...')
     use_aflink = str2bool(args.aflink)
     use_gbi = str2bool(args.gbi)
@@ -155,23 +162,21 @@ def run():
         path_in = os.path.join(result_folder, result_file)
         path_out = os.path.join(post_folder, result_file)
 
-        # Mặc định copy sang post nếu không chạy post-processing
+        # By default, copy to post if post-processing is not running.
         import shutil
         shutil.copy(path_in, path_out)
 
         # Link (AFLink)
-        # if use_aflink and 'Dance' in args.dataset:
-        if use_aflink: 
+        if use_aflink and 'Dance' in args.dataset:
             linker = AFLink(path_in=path_out, path_out=path_out, model=model, dataset=aflink_dataset,
                             thrT=(0, 20), thrS=100, thrP=0.05)
             linker.link()
 
         # Gaussian Interpolation (GBI)
-        # if use_gbi and 'MOT' in args.dataset:
-        if use_gbi: 
+        if use_gbi and 'MOT' in args.dataset:
             gb_interpolation(path_out, path_out, interval=30, tau=12)
 
-    # Đánh giá (Evaluation)
+    # Evaluation
     if args.mode == 'val':
         print('Evaluating...')
         evaluate(args, trackers_to_eval + '_post', args.dataset)

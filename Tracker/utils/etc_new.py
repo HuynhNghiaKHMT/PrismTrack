@@ -27,6 +27,10 @@ def set_parameters(args, vid_name, mode):
             args.det_high_thr, args.det_init_thr = 0.60, 0.70
 
         args.match_thr = 0.70
+        args.penalty_p = 0.20  if mode == 'val' else 0.45
+        args.dlo_boost_coef = 0.65
+        args.det_thresh = 0.6 
+
 
     elif 'MOT20' in vid_name:
         if mode == 'val':
@@ -44,6 +48,9 @@ def set_parameters(args, vid_name, mode):
             args.det_high_thr, args.det_init_thr = 0.40, 0.40
             
         args.match_thr = 0.55
+        args.dlo_boost_coef = 0.5
+        args.det_thresh = 0.4
+
 
     else:
         if mode == 'val':

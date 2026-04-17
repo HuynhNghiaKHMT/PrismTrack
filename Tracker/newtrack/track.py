@@ -111,7 +111,7 @@ class Track(BaseTrack):
         # Predict
         self.mean, self.covariance = self.kalman_filter.predict(self.mean, self.covariance)
 
-    def update(self, frame_id, detection, update_feat=True):
+    def update(self, frame_id, detection, update_feat=False):
         # Update Kalman filter & Feature
         self.mean, self.covariance = self.kalman_filter.update( 
             self.mean, self.covariance,                                    

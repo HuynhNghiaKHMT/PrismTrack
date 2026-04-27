@@ -1,6 +1,6 @@
 from trackers.cmc import *
 from newtrack.utils import *
-from newtrack.track import *
+from newtrack.track_v1 import *
 from newtrack.association import *
 from newtrack.boost_confidence import *
 
@@ -16,6 +16,7 @@ class Tracker(object):
         self.counter = TrackCounter()
 
         # Set global motion compensation model
+        # self.cmc = CMC(vid_name)
         self.cmc = CMC(vid_name) if args.cmc == "true" else None 
 
     def update(self, dets, use_cmc, use_idcboost, use_reid, use_tpa):
@@ -178,7 +179,21 @@ class Tracker(object):
         # Clean removed
         self.tracks = [t for t in self.tracks if t.state != TrackState.Removed]
 
-        return [t for t in self.tracks if t.state == TrackState.Tracked]
+        # return [t for t in self.tracks if t.state == TrackState.Tracked]
+
+        outputs = []
+        for t in self.tracks:
+            # CASE 1: vừa được confirm → flush toàn bộ history
+            if t.is_confirmed and not t.has_flushed:
+                for (f_id, box, score) in t.pending_history:
+                    outputs.append((f_id, t.track_id, box.copy(), score))
+                t.pending_history = []  # clear sau khi flush
+                t.has_flushed = True
+
+            # CASE 2: đã confirm từ trước → output bình thường
+            elif t.state == TrackState.Tracked:
+                outputs.append((self.frame_id, t.track_id, t.box.copy(), t.score))
+        return outputs
 
     def update_without_detections(self):
         # Update frame id
@@ -207,5 +222,21 @@ class Tracker(object):
         # Filter out the removed tracks
         self.tracks = [t for t in self.tracks if t.state != TrackState.Removed]
 
-        return [t for t in self.tracks if t.state == TrackState.Tracked]
+        
+        # return [t for t in self.tracks if t.state == TrackState.Tracked]
+    
+        outputs = []
+        for t in self.tracks:
+            # CASE 1: vừa được confirm → flush toàn bộ history
+            if t.is_confirmed and not t.has_flushed:
+                for (f_id, box, score) in t.pending_history:
+                    outputs.append((f_id, t.track_id, box.copy(), score))
+                t.pending_history = []  # clear sau khi flush
+                t.has_flushed = True
+
+            # CASE 2: đã confirm từ trước → output bình thường
+            elif t.state == TrackState.Tracked:
+                outputs.append((self.frame_id, t.track_id, t.box.copy(), t.score))
+        return outputs
+
     

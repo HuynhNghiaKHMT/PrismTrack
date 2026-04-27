@@ -95,36 +95,6 @@ def associate(cost, match_thr):
 
     return matches
 
-def build_cost_stage12(tracks, dets_high, dets_low, penalty_p, frame_id, use_reid):
-    """
-    C_final = W_1 * C_IoU +  W_2 * C_Appr + W_3 * C_Vel +  W_4 * C_Conf
-    """
-
-    dets = dets_high + dets_low 
-    
-    # MHIoU/ DIoU cost
-    iou_sim, iou_dist = diou_distance(tracks, dets)
-    cos_dist = cos_distance(tracks, dets)
-
-    # Appearance cost
-    if use_reid:
-        alpha = 0.45
-        cost = alpha * iou_dist + (1.0 - alpha) * cos_dist
-    else:
-        cost = cos_dist
-
-    # Confidence/ Velocity cost
-    # cost += 0.05 * conf_distance_linear(tracks, dets)
-    cost += 0.1 * angle_distance(tracks, dets, frame_id, 3)
-
-    # Penalty for dets_low, give priority to dets_high. Although the IoU of the Low-conf may be slightly higher.
-    cost[:, len(dets_high):] += penalty_p 
-
-    # Gating
-    cost[iou_sim <= 0.1] = 1.0
-
-    return np.clip(cost, 0, 1)
-
 def iterative_assignment(cost, match_thr, reduce_step, tracks, dets):
     
     # Iterative Association
@@ -148,3 +118,102 @@ def iterative_assignment(cost, match_thr, reduce_step, tracks, dets):
     u_dets = [d for d in range(len(dets)) if d not in m_dets]
 
     return matches, u_tracks, u_dets
+
+def build_cost_stage12(tracks, dets_high, dets_low, penalty_p, wm, wv, wc, ws, frame_id, use_reid, dt):
+    """
+    C_motion = C_IoU +  W_1 * C_Appr + W_2 * C_Vel +  W_3 * C_Conf + W_4 * C_Shape
+    C_final = W_1 * C_motion + W_2 * C_Appr
+    """
+
+    dets = dets_high + dets_low 
+    
+    # MHIoU/ DIoU cost
+    iou_sim, iou_dist = diou_distance(tracks, dets)
+    cos_dist = cos_distance(tracks, dets)
+
+    # t_score = np.array([t.score for t in tracks])
+    # d_score = np.array([d.score for d in dets]) 
+    # conf = t_score[:, None] * d_score[None, :]
+    # conf = 1 - conf_distance_kf(tracks, dets) 
+
+    # Velocity / Confidence / Shape cost
+    iou_dist += wv * angle_distance(tracks, dets, frame_id, 3) # 0.25
+    iou_dist += wc * conf_distance_linear(tracks, dets) # 0.3
+    iou_dist += ws * shape_similarity(tracks, dets)[1]
+    # iou_dist +=  0.05 *  mhd(tracks, dets) 
+    # iou_dist +=  0.2 *  bbd(tracks, dets,frame_id) 
+
+    # Appearance cost
+    if use_reid:
+        alpha = wm
+        cost = alpha * iou_dist + (1.0 - alpha) * cos_dist
+    else:
+        cost = cos_dist
+
+    # Confidence/ Velocity cost
+    # cost += 0.05 * angle_distance(tracks, dets, frame_id, 3)
+    # cost += 0.05 * conf_distance_linear(tracks, dets) 
+    # cost += 0.2 * shape_similarity(tracks, dets)[1]
+
+    # Penalty for dets_low, give priority to dets_high. Although the IoU of the Low-conf may be slightly higher.
+    cost[:, len(dets_high):] += penalty_p 
+
+    # Gating
+    cost[iou_sim <= 0.1] = 1.0
+
+    return np.clip(cost, 0, 1)
+
+
+def build_cost_stage12_adapt(tracks, dets_high, dets_low, penalty_p, frame_id, use_reid, dt):
+    """
+    C_motion = C_IoU +  W_1 * C_Appr + W_2 * C_Vel +  W_3 * C_Conf + W_4 * C_Shape
+    C_final = W_1 * C_motion + W_2 * C_Appr
+    """
+
+    dets = dets_high + dets_low 
+    
+    # MHIoU/ DIoU cost
+    iou_sim, iou_dist = diou_distance(tracks, dets)
+    cos_dist = cos_distance(tracks, dets)
+    iou_dist += 0.15 * angle_distance(tracks, dets, frame_id, 3)
+    iou_dist +=  0.1 * shape_similarity(tracks, dets)[1]
+
+    # c1
+    # adaptive_alpha = max(0.35, 0.5 * np.exp(-0.1 * (dt - 1)))
+    # C2
+    alpha_base = 0.45
+    tau = 10.0
+    adaptive_alpha = alpha_base * np.exp(-(dt - 1) / tau)
+    adaptive_alpha = max(0.35, adaptive_alpha)
+    # C3
+    # tau = 10.0 
+    # adaptive_alpha = 0.45 * (1 - 0.6 * (dt - 1) / (dt + tau))
+    # adaptive_alpha = max(0.3, adaptive_alpha)
+    # C4
+    # dt_factor = np.log2(max(5, dt) / 5.0)
+    # adaptive_alpha = max(0.3, 0.45 - 0.05 * dt_factor)
+
+    # Appearance cost
+    if use_reid:
+        cost = adaptive_alpha * iou_dist + (1.0 - adaptive_alpha) * cos_dist
+    else:
+        cost = cos_dist
+
+
+    # Penalty for dets_low, give priority to dets_high. Although the IoU of the Low-conf may be slightly higher.
+    # dynamic_penalty = penalty_p * (1 + 0.2 * dt_factor)
+    cost[:, len(dets_high):] += penalty_p 
+
+    # Gating
+    # C1
+    # iou_thr = max(0.01, 0.1 * np.exp(-0.15 * (dt - 1)))
+    # C2
+    iou_thr = 0.1 / (1 + np.log(dt))
+    # C3
+    # iou_thr = 0.1 / (1 + 0.15 * (dt - 1))
+    # C4
+    # iou_thr = max(0.01, 0.1 / (1 + 0.5 * dt_factor))
+    cost[iou_sim <= iou_thr] = 1.0
+
+    return np.clip(cost, 0, 1)
+

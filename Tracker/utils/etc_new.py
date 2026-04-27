@@ -5,11 +5,10 @@ import numpy as np
 # Randomly select bbox color for each object id
 color = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for i in range(5000)]
 
-
 def set_parameters(args, vid_name, mode):
-    # Set properly for each dataset
+
+    # Set properly for each dataset and each video
     if 'MOT17' in vid_name:
-        # Path
         if mode == 'val':
             args.pickle_path = args.pickle_dir + 'mot17_val_0.70.pickle'
             args.data_path = args.data_dir + 'MOT17/train/'
@@ -26,11 +25,12 @@ def set_parameters(args, vid_name, mode):
         else:
             args.det_high_thr, args.det_init_thr = 0.60, 0.70
 
+        # Baseline Setting
         args.match_thr = 0.70
-        args.penalty_p = 0.20  if mode == 'val' else 0.45
-        args.dlo_boost_coef = 0.65
-        args.det_thresh = 0.6 
-
+        args.det_thresh = args.det_high_thr
+        args.boost_coef = args.det_thresh + 0.05
+        args.penalty_p = 0.2  if mode == 'val' else 0.35
+        args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.15, 0.05, 0.15, 0.45
 
     elif 'MOT20' in vid_name:
         if mode == 'val':
@@ -46,11 +46,13 @@ def set_parameters(args, vid_name, mode):
             args.det_high_thr, args.det_init_thr = 0.40, 0.50
         else:
             args.det_high_thr, args.det_init_thr = 0.40, 0.40
-            
+        
+        # Baseline Setting
         args.match_thr = 0.55
-        args.dlo_boost_coef = 0.5
-        args.det_thresh = 0.4
-
+        args.det_thresh = args.det_high_thr
+        args.boost_coef = args.det_thresh + 0.1
+        args.penalty_p = 0.20  if mode == 'val' else 0.35
+        args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.15, 0.05, 0.15, 0.35
 
     else:
         if mode == 'val':
@@ -61,9 +63,13 @@ def set_parameters(args, vid_name, mode):
             args.data_path = args.data_dir + 'DanceTrack/test/'
 
         # Baseline Setting
-        args.det_thr = 0.60
-        args.init_thr = 0.60
+        args.det_high_thr = 0.60
+        args.det_init_thr = 0.60
         args.match_thr = 0.80 if mode == 'val' else 0.60
+        args.det_thresh = args.det_high_thr
+        args.boost_coef = args.det_thresh + 0.05
+        args.penalty_p = 0.2  if mode == 'val' else 0.2 
+        args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.1, 0.3, 0.15, 0.45
 
 
 def write_results(filename, results):
@@ -92,7 +98,7 @@ def write_results(filename, results):
 
 def evaluate(args, trackers_to_eval, dataset):
     # Set evaluation configurations
-    eval_config = {'USE_PARALLEL': True,
+    eval_config = {'USE_PARALLEL': False, # True
                    'NUM_PARALLEL_CORES': 8,
                    'BREAK_ON_ERROR': True,
                    'RETURN_ON_ERROR': False,

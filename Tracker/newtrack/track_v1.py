@@ -64,12 +64,19 @@ class Track(BaseTrack):
 
         # Initialize 3
         self.alpha = 0.95
-        self.feat = detection[6:][np.newaxis, :].copy() if args.reid else None
+        # self.feat = detection[6:][np.newaxis, :].copy()
+        self.feat = detection[6:][np.newaxis, :].copy() if args.reid else None # change
+
+        self.is_confirmed = False
+        self.has_flushed = False
+        self.pending_history = []   # buffer tạm trước khi confirmed
 
         self.age = 0
         self.time_since_update = 0
 
+
     def get_delta_tau(self, current_frame_id):
+        # delta_tau chính là khoảng cách thời gian
         return max(1, current_frame_id - self.end_frame_id)
 
     def get_confidence(self, coef=0.9):
@@ -95,7 +102,7 @@ class Track(BaseTrack):
     def initiate(self, frame_id, counter):
         # Get new track id
         self.track_id = counter.get_track_id()
-        self.start_frame_id = frame_id
+        self.start_frame_id = frame_id # add
 
         # Initiate Kalman filter
         if self.args.kf == "old":
@@ -108,6 +115,8 @@ class Track(BaseTrack):
         # Initiate history
         self.history[frame_id] = [self.box.copy(), self.score.copy(), self.mean.copy(),
                                   self.covariance.copy(), self.feat.copy()]
+        
+        self.pending_history.append((frame_id, self.box.copy(), self.score))
 
         # Initiate parameters
         self.end_frame_id = frame_id
@@ -127,26 +136,30 @@ class Track(BaseTrack):
         self.time_since_update += 1
 
     def update(self, frame_id, detection, update_feat=False):
-
         self.time_since_update = 0
 
         # Update Kalman filter & Feature
         self.mean, self.covariance = self.kalman_filter.update( 
             self.mean, self.covariance,                                    
             detection.cxcywh.copy(),
+            # frame_id, 
             detection.score
         )
           
         # update_features
+        # Stage 1 mới cập nhật feature, Stage 2 thì không
         if update_feat and self.args.reid:
             self.update_features(detection.feat, detection.score)
 
-        # current_track_confidence = self.get_confidence()
-        # self.score = current_track_confidence 
+        current_track_confidence = self.get_confidence()
+        self.score = current_track_confidence 
+        self.new_score = current_track_confidence
         
         # Update history
-        self.history[frame_id] = [detection.box.copy(), detection.score, self.mean.copy(),
+        self.history[frame_id] = [detection.box.copy(), current_track_confidence, self.mean.copy(),
                                   self.covariance.copy(), self.feat.copy()]
+        
+        self.pending_history.append((frame_id, detection.box.copy(), current_track_confidence))
 
         # Update velocity
         self.velocity = np.zeros((4, 2))
@@ -157,10 +170,20 @@ class Track(BaseTrack):
 
         # Update parameters
         self.box = detection.box.copy()
+        # self.score = detection.score
+        # self.new_score = detection.score
         self.end_frame_id = frame_id
         self.hits += 1
 
-        self.state = TrackState.Tracked if self.hits >= self.args.min_hits else TrackState.New
+        # self.state = TrackState.Tracked if len(self.history.keys()) >= self.args.min_hits else TrackState.New
+        # self.state = TrackState.Tracked if self.hits >= self.args.min_hits else TrackState.New
+        if self.hits >= self.args.min_hits:
+            self.state = TrackState.Tracked
+            if not self.is_confirmed:
+                self.is_confirmed = True
+                self.has_flushed = False
+        else:
+            self.state = TrackState.New
 
     @property
     def cxcywh(self):

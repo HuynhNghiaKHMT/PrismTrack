@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import random
 import time
-from newtrack.tracker import Tracker
+from newtrack.tracker_v1 import Tracker
 from utils.etc_new import *
 from newtrack.utils import *
 from AFLink.AppFreeLink import *
@@ -17,6 +17,7 @@ from utils.gbi import gb_interpolation
 Script modified from TrackTrack: 
 https://github.com/kamkyu94/TrackTrack
 """
+
 
 def make_parser():
     parser = argparse.ArgumentParser("TrackTrack Experiment")
@@ -101,6 +102,7 @@ def track_experiment(args, detections, data_path, result_folder, mode):
 
         tracker = Tracker(args, vid_name)
         results = []
+        results_dict = {}
 
         for frame_id in detections[vid_name].keys():
             start = time.time()
@@ -116,18 +118,39 @@ def track_experiment(args, detections, data_path, result_folder, mode):
             total_count += 1
 
             # Filter results
-            x1y1whs, track_ids, scores = [], [], []
-            for t in track_results:
-                # Check aspect ratio
-                if 'MOT' in data_path and t.x1y1wh[2] / t.x1y1wh[3] > args.min_ratio:
-                    continue
-                # Check track id, min area
-                if t.track_id > 0 and t.x1y1wh[2] * t.x1y1wh[3] > args.min_box_area:
-                    x1y1whs.append(t.x1y1wh)
-                    track_ids.append(t.track_id)
-                    scores.append(t.score)
+            # x1y1whs, track_ids, scores = [], [], []
+            # for t in track_results:
+            #     # Check aspect ratio
+            #     if 'MOT' in data_path and t.x1y1wh[2] / t.x1y1wh[3] > args.min_ratio:
+            #         continue
+            #     # Check track id, min area
+            #     if t.track_id > 0 and t.x1y1wh[2] * t.x1y1wh[3] > args.min_box_area:
+            #         x1y1whs.append(t.x1y1wh)
+            #         track_ids.append(t.track_id)
+            #         scores.append(t.score)
 
-            results.append([frame_id, track_ids, x1y1whs, scores])
+            # results.append([frame_id, track_ids, x1y1whs, scores])
+
+
+            for (f_id, track_id, box, score) in track_results:
+                if f_id not in results_dict:
+                    results_dict[f_id] = [[], [], []]
+
+                x1, y1, x2, y2 = box
+                w, h = x2 - x1, y2 - y1
+
+                if 'MOT' in data_path and w / h > args.min_ratio:
+                    continue
+
+                if track_id > 0 and w * h > args.min_box_area:
+                    results_dict[f_id][0].append(track_id)
+                    results_dict[f_id][1].append([x1, y1, w, h])
+                    results_dict[f_id][2].append(score)
+            
+            results = []
+            for f_id in sorted(results_dict.keys()):
+                ids, boxes, scores = results_dict[f_id]
+                results.append([f_id, ids, boxes, scores])
 
         # Write Results
         result_filename = os.path.join(result_folder, f'{vid_name}.txt')
@@ -181,7 +204,7 @@ def run():
         # Link (AFLink)
         if use_aflink and 'Dance' in args.dataset:
             # print(f"Running AFLink on {result_file}...")
-            linker = AFLink(path_out, path_out, model=model, dataset=aflink_dataset,
+            linker = AFLink(path_in=path_out, path_out=path_out, model=model, dataset=aflink_dataset,
                             thrT=(0, 20), thrS=100, thrP=0.05)
             linker.link()
 
@@ -198,6 +221,10 @@ def run():
     print(f"FPS: {total_count / total_time:.2f}")
 
 if __name__ == "__main__":
+
+    import tempfile
+    print("TEMP DIR:", tempfile.gettempdir())
+
     args = make_parser().parse_args()
 
     random.seed(int(args.seed))

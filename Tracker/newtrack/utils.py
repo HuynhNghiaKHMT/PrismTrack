@@ -372,7 +372,6 @@ def conf_distance_linear(tracks, dets):
 
     # Linear projection
     t_score_prev = np.array(t_score_prev)
-    # t_score = np.array([t.score for t in tracks])
     t_score = np.array([t.score for t in tracks])
     t_score += (t_score - t_score_prev)
 
@@ -441,6 +440,85 @@ def angle_distance(tracks, dets, frame_id, d_t=3):
     # angle_dist *= scores
 
     return angle_dist
+
+def shape_similarity(a_tracks, b_tracks):
+
+    a_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in a_tracks], dtype=np.float64)
+    b_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in b_tracks], dtype=np.float64)
+
+    if a_boxes.shape[0] == 0 or b_boxes.shape[0] == 0:
+        shape_sim = np.zeros((a_boxes.shape[0], b_boxes.shape[0]), dtype=np.float64)
+        shape_dist = 1 - shape_sim
+        return shape_sim, shape_dist
+
+    dw = (a_boxes[:, 2] - a_boxes[:, 0]).reshape((-1, 1))
+    dh = (a_boxes[:, 3] - a_boxes[:, 1]).reshape((-1, 1))
+    tw = (b_boxes[:, 2] - b_boxes[:, 0]).reshape((1, -1))
+    th = (b_boxes[:, 3] - b_boxes[:, 1]).reshape((1, -1))
+
+    shape_sim = np.exp(
+        -(np.abs(dw - tw)/np.maximum(dw, tw) + np.abs(dh - th)/np.maximum(dh, th))
+    )
+    shape_dist = 1 - shape_sim
+
+    return shape_sim, shape_dist
+
+def bbd(tracks, dets, frame_id, alpha=0.025, beta=0.25, c=1.0):
+
+    if len(tracks) == 0 or len(dets) == 0:
+        return np.zeros((len(tracks), len(dets)))
+
+    bbd_thress = 13.2767
+    bbd_dist = np.zeros((len(tracks), len(dets)))  # FIX SHAPE
+
+    for i, t in enumerate(tracks):
+        mean = t.cxcywh
+        w, h = mean[2], mean[3]
+
+        dt = np.clip(t.get_delta_tau(frame_id), alpha, beta)
+
+        P = np.array([
+            [(c * w) ** 2 * dt, 0],
+            [0, (c * h) ** 2 * dt]
+        ])
+
+        P_inv = np.linalg.inv(P)
+
+        for j, d in enumerate(dets):
+            diff = np.array(d.cxcywh[:2]) - np.array(mean[:2])
+
+            dist = diff.T @ P_inv @ diff
+            dist = np.sqrt(dist)
+
+            # Normalize (quan trọng)
+            dist = min(dist / bbd_thress, 1.0)
+
+            bbd_dist[i, j] = dist
+
+    return bbd_dist
+
+def mhd(tracks, dets):
+    if len(tracks) == 0 or len(dets) == 0:
+        return np.zeros((len(tracks), len(dets)))
+
+    z = np.array([d.cxcywh for d in dets])           # (M,4)
+    x = np.array([t.mean[:4] for t in tracks])       # (N,4)
+
+    sigma_inv = np.array([
+        np.reciprocal(np.diag(t.covariance[:4, :4]) + 1e-6)
+        for t in tracks
+    ])  # (N,4)
+
+    # (N,M,4)
+    diff = z[None, :, :] - x[:, None, :]
+
+    mh = (diff ** 2 * sigma_inv[:, None, :]).sum(axis=2)  # (N,M)
+
+    # normalize
+    limit = 13.2767
+    mh = np.minimum(mh, limit) / limit
+
+    return mh
 
 # def hmiou_distance(a_tracks, b_tracks):
 #     """

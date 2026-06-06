@@ -26,10 +26,11 @@ def set_parameters(args, vid_name, mode):
             args.det_high_thr, args.det_init_thr = 0.60, 0.70
 
         # Baseline Setting
+        args.asso = "giou"
         args.match_thr = 0.70
         args.det_thresh = args.det_high_thr
         args.boost_coef = args.det_thresh + 0.05
-        args.penalty_p = 0.2  if mode == 'val' else 0.35
+        args.penalty_p = 0.2 if mode == 'val' else 0.35
         args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.15, 0.05, 0.15, 0.45
 
     elif 'MOT20' in vid_name:
@@ -48,11 +49,12 @@ def set_parameters(args, vid_name, mode):
             args.det_high_thr, args.det_init_thr = 0.40, 0.40
         
         # Baseline Setting
+        args.asso = "hmiou"
         args.match_thr = 0.55
         args.det_thresh = args.det_high_thr
         args.boost_coef = args.det_thresh + 0.1
         args.penalty_p = 0.20  if mode == 'val' else 0.35
-        args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.15, 0.05, 0.15, 0.35
+        args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.15, 0.25, 0.15, 0.35
 
     else:
         if mode == 'val':
@@ -63,13 +65,14 @@ def set_parameters(args, vid_name, mode):
             args.data_path = args.data_dir + 'DanceTrack/test/'
 
         # Baseline Setting
+        args.asso = "hmiou"
         args.det_high_thr = 0.60
         args.det_init_thr = 0.60
         args.match_thr = 0.80 if mode == 'val' else 0.60
         args.det_thresh = args.det_high_thr
         args.boost_coef = args.det_thresh + 0.05
-        args.penalty_p = 0.2  if mode == 'val' else 0.2 
-        args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.1, 0.3, 0.15, 0.45
+        args.penalty_p = 0.2  if mode == 'val' else 0.2
+        args.w_vel, args.w_conf, args.w_shape, args.w_motion = 0.1, 0.3, 0.2, 0.45
 
 
 def write_results(filename, results):

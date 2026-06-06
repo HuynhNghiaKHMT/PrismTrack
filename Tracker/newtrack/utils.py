@@ -24,8 +24,8 @@ def iou_distance(a_tracks, b_tracks):
     xx2 = np.minimum(bboxes1[..., 2], bboxes2[..., 2])
     yy2 = np.minimum(bboxes1[..., 3], bboxes2[..., 3])
 
-    w = np.maximum(0.0, xx2 - xx1 )
-    h = np.maximum(0.0, yy2 - yy1 )
+    w = np.maximum(0.0, xx2 - xx1)
+    h = np.maximum(0.0, yy2 - yy1)
     inter = w * h
 
     area1 = (bboxes1[..., 2] - bboxes1[..., 0] ) * (bboxes1[..., 3] - bboxes1[..., 1] )
@@ -64,13 +64,13 @@ def giou_distance(a_tracks, b_tracks):
     xx2 = np.minimum(bboxes1[..., 2], bboxes2[..., 2])
     yy2 = np.minimum(bboxes1[..., 3], bboxes2[..., 3])
 
-    w = np.maximum(0.0, xx2 - xx1 + 1.0)
-    h = np.maximum(0.0, yy2 - yy1 + 1.0)
+    w = np.maximum(0.0, xx2 - xx1)
+    h = np.maximum(0.0, yy2 - yy1)
     inter = w * h
 
     # Areas & IoU
-    area1 = (bboxes1[..., 2] - bboxes1[..., 0] + 1.0) * (bboxes1[..., 3] - bboxes1[..., 1] + 1.0)
-    area2 = (bboxes2[..., 2] - bboxes2[..., 0] + 1.0) * (bboxes2[..., 3] - bboxes2[..., 1] + 1.0)
+    area1 = (bboxes1[..., 2] - bboxes1[..., 0] ) * (bboxes1[..., 3] - bboxes1[..., 1] )
+    area2 = (bboxes2[..., 2] - bboxes2[..., 0] ) * (bboxes2[..., 3] - bboxes2[..., 1] )
     union = area1 + area2 - inter + 1e-6
     iou = inter / union
 
@@ -82,14 +82,12 @@ def giou_distance(a_tracks, b_tracks):
 
     wc = np.maximum(0.0, xxc2 - xxc1)
     hc = np.maximum(0.0, yyc2 - yyc1)
-    area_enclose = wc * hc + 1e-6
+    area_enclose = wc * hc 
 
     # Calculate GIoU
-    giou = iou - (area_enclose - union) / area_enclose
-
-    giou_sim = giou
+    giou_sim = iou - (area_enclose - union) / (area_enclose + 1e-6)
+    # giou_sim = np.clip(giou_sim, 0.0, 1.0)
     giou_dist = 1.0 - giou_sim
-    giou_dist = np.clip(giou_dist, 0.0, 1.0)
 
 
     return giou_sim, giou_dist
@@ -150,8 +148,8 @@ def ciou_distance(a_tracks, b_tracks):
     w2 = bboxes2[..., 2] - bboxes2[..., 0]
     h2 = bboxes2[..., 3] - bboxes2[..., 1]
 
-    h1 = h1 + 1.0
-    h2 = h2 + 1.0
+    h1 = h1 + 1e-6
+    h2 = h2 + 1e-6
 
     arctan = np.arctan(w2 / h2) - np.arctan(w1 / h1)
     v = (4.0 / (np.pi ** 2)) * (arctan ** 2)
@@ -160,11 +158,9 @@ def ciou_distance(a_tracks, b_tracks):
     alpha = v / (S + v + 1e-6)
 
     # Calculate CIoU
-    ciou = iou - inner_diag / outer_diag - alpha * v
-
-    ciou_sim = ciou
+    ciou_sim = iou - inner_diag / outer_diag - alpha * v
+    # ciou_sim = np.clip(ciou_sim, 0.0, 1.0)
     ciou_dist = 1.0 - ciou_sim
-    ciou_dist = np.clip(ciou_dist, 0.0, 1.0)
 
     return ciou_sim, ciou_dist
 
@@ -219,11 +215,9 @@ def diou_distance(a_tracks, b_tracks):
     outer_diag = (xxc2 - xxc1) ** 2 + (yyc2 - yyc1) ** 2 + 1e-6
 
     # Calculate DIoU
-    diou = iou - inner_diag / outer_diag
-
-    diou_sim = diou
+    diou_sim = iou - inner_diag / outer_diag
+    # diou_sim = np.clip(diou_sim, 0.0, 1.0)
     diou_dist = 1.0 - diou_sim
-    diou_dist = np.clip(diou_dist, 0.0, 1.0)
 
     return diou_sim, diou_dist
 
@@ -276,7 +270,7 @@ def hmiou_distance(a_tracks, b_tracks):
     # Calculate HMIoU
     iou_sim = iou
     hmiou_dist = 1.0 - hiou * iou_sim
-    hmiou_dist = np.clip(hmiou_dist, 0.0, 1.0)
+    # hmiou_dist = np.clip(hmiou_dist, 0.0, 1.0)
 
     return iou_sim, hmiou_dist
     
@@ -329,7 +323,7 @@ def wmiou_distance(a_tracks, b_tracks):
     # Calculate WMIoU
     iou_sim = iou
     wmiou_dist = 1.0 - wiou * iou_sim
-    wmiou_dist = np.clip(wmiou_dist, 0.0, 1.0)
+    # wmiou_dist = np.clip(wmiou_dist, 0.0, 1.0)
 
     return iou_sim, wmiou_dist
 
@@ -351,7 +345,6 @@ def cos_distance(tracks, dets):
 
 def conf_distance_kf(tracks, dets):
     # Calculate confidence similarity
-    # t_score = np.array([t.score for t in tracks])
     t_score = np.array([t.score for t in tracks])
     d_score = np.array([d.score for d in dets])
     conf_dist = np.abs(t_score[:, None] - d_score[None, :])
@@ -456,108 +449,8 @@ def shape_similarity(a_tracks, b_tracks):
     tw = (b_boxes[:, 2] - b_boxes[:, 0]).reshape((1, -1))
     th = (b_boxes[:, 3] - b_boxes[:, 1]).reshape((1, -1))
 
-    shape_sim = np.exp(
-        -(np.abs(dw - tw)/np.maximum(dw, tw) + np.abs(dh - th)/np.maximum(dh, th))
-    )
+    shape_sim = np.exp(-(np.abs(dw - tw)/np.maximum(dw, tw) + np.abs(dh - th)/np.maximum(dh, th)))
     shape_dist = 1 - shape_sim
 
     return shape_sim, shape_dist
 
-def bbd(tracks, dets, frame_id, alpha=0.025, beta=0.25, c=1.0):
-
-    if len(tracks) == 0 or len(dets) == 0:
-        return np.zeros((len(tracks), len(dets)))
-
-    bbd_thress = 13.2767
-    bbd_dist = np.zeros((len(tracks), len(dets)))  # FIX SHAPE
-
-    for i, t in enumerate(tracks):
-        mean = t.cxcywh
-        w, h = mean[2], mean[3]
-
-        dt = np.clip(t.get_delta_tau(frame_id), alpha, beta)
-
-        P = np.array([
-            [(c * w) ** 2 * dt, 0],
-            [0, (c * h) ** 2 * dt]
-        ])
-
-        P_inv = np.linalg.inv(P)
-
-        for j, d in enumerate(dets):
-            diff = np.array(d.cxcywh[:2]) - np.array(mean[:2])
-
-            dist = diff.T @ P_inv @ diff
-            dist = np.sqrt(dist)
-
-            # Normalize (quan trọng)
-            dist = min(dist / bbd_thress, 1.0)
-
-            bbd_dist[i, j] = dist
-
-    return bbd_dist
-
-def mhd(tracks, dets):
-    if len(tracks) == 0 or len(dets) == 0:
-        return np.zeros((len(tracks), len(dets)))
-
-    z = np.array([d.cxcywh for d in dets])           # (M,4)
-    x = np.array([t.mean[:4] for t in tracks])       # (N,4)
-
-    sigma_inv = np.array([
-        np.reciprocal(np.diag(t.covariance[:4, :4]) + 1e-6)
-        for t in tracks
-    ])  # (N,4)
-
-    # (N,M,4)
-    diff = z[None, :, :] - x[:, None, :]
-
-    mh = (diff ** 2 * sigma_inv[:, None, :]).sum(axis=2)  # (N,M)
-
-    # normalize
-    limit = 13.2767
-    mh = np.minimum(mh, limit) / limit
-
-    return mh
-
-# def hmiou_distance(a_tracks, b_tracks):
-#     """
-#     Return:
-#         iou_sim: IoU similarity matrix
-#         hmiou_dist: 1 - HIoU * IOU
-#     """
-#     a_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in a_tracks], dtype=np.float64)
-#     b_boxes = np.ascontiguousarray([t.x1y1x2y2 for t in b_tracks], dtype=np.float64)
-
-#     # Calculate IoU distance
-#     if len(a_boxes) == 0 or len(b_boxes) == 0:
-#         sim = np.zeros((len(a_boxes), len(b_boxes)))
-#         return sim, 1 - sim
-
-#     b1 = a_boxes[:, None, :]
-#     b2 = b_boxes[None, :, :]
-
-#     # Calculate HIoU # ---- height ratio (NO clamp, NO epsilon) ----
-#     h_iou = (np.minimum(b1[..., 3], b2[..., 3]) - np.maximum(b1[..., 1], b2[..., 1])) 
-#           / \ (np.maximum(b1[..., 3], b2[..., 3]) - np.minimum(b1[..., 1], b2[..., 1]))
-
-#     # ---- IoU EXACT bbox_overlaps style ----
-#     iw = np.minimum(b1[..., 2], b2[..., 2]) - np.maximum(b1[..., 0], b2[..., 0]) + 1
-#     ih = np.minimum(b1[..., 3], b2[..., 3]) - np.maximum(b1[..., 1], b2[..., 1]) + 1
-
-#     valid = (iw > 0) & (ih > 0)
-
-#     area1 = (b1[..., 2] - b1[..., 0] + 1) * (b1[..., 3] - b1[..., 1] + 1)
-#     area2 = (b2[..., 2] - b2[..., 0] + 1) * (b2[..., 3] - b2[..., 1] + 1)
-
-#     inter = iw * ih
-#     union = area1 + area2 - inter
-
-#     iou = np.zeros_like(inter)
-#     iou[valid] = inter[valid] / union[valid]
-
-#     # ---- FINAL ----
-#     sim = iou                     
-#     dist = 1 - h_iou * iou       
-
-#     return sim, dist

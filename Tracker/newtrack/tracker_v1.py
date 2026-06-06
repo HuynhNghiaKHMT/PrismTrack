@@ -27,7 +27,7 @@ class Tracker(object):
 
         # Boost confidence of detections
         if use_idcboost:
-            dets = IDCBoost(dets, self.tracks,  self.args.boost_coef, self.args.det_thr, self.args.iou_limit,
+            dets = IDCBoost(dets, self.tracks, self.args.boost_coef, self.args.det_thr, self.args.iou_limit,
                             self.frame_id, use_dlo = True, use_duo = True)
         
         # Split detections
@@ -55,7 +55,7 @@ class Tracker(object):
             # ===================
             # STAGE 1: HIGH-CONF
             # ===================
-            cost = build_cost_stage1(tracked_lost, dets_high, self.frame_id, use_reid)
+            cost = build_cost_stage1(tracked_lost, dets_high, self.args.asso, self.frame_id, use_reid)
             matches1, u_tracks1, u_dets1 = linear_assignment(cost, self.args.match_thr)
 
             # matches1, u_tracks1, u_dets1 = iterative_assignment(
@@ -70,7 +70,7 @@ class Tracker(object):
             # ==================
             remain_tracked = [tracked_lost[i] for i in u_tracks1 if tracked_lost[i].state == TrackState.Tracked]
 
-            cost = build_cost_stage2(remain_tracked, dets_low, self.frame_id)
+            cost = build_cost_stage2(remain_tracked, dets_low, self.args.asso, self.frame_id)
             matches2, u_tracks2, u_dets2 = linear_assignment(cost, 0.50)
 
             # matches2, u_tracks2, u_dets2 = iterative_assignment(
@@ -98,12 +98,14 @@ class Tracker(object):
 
             cost = build_cost_stage12(
                 tracked_lost, dets_high, dets_low, 
-                self.args.penalty_p, self.args.w_motion, 
+                self.args.asso, self.args.penalty_p, self.args.w_motion, 
                 self.args.w_vel, self.args.w_conf, self.args.w_shape,
                 self.frame_id, use_reid, self.args.dt)
             matches, u_tracks, u_dets = iterative_assignment(
                 cost, self.args.match_thr, self.args.reduce_step, 
                 tracked_lost, dets_all)
+            
+            # matches, u_tracks, u_dets = linear_assignment(cost, self.args.match_thr)
             
             for t, d in matches:
                 update_feat = True if d < len(dets_high) else False
@@ -130,7 +132,7 @@ class Tracker(object):
         if not use_tpa:
             final_tracks = remain_lost + new_tracks
 
-            cost = build_cost_stage3(final_tracks, dets_high_remain, self.frame_id)
+            cost = build_cost_stage3(final_tracks, dets_high_remain, self.args.asso, self.frame_id)
             matches3, u_tracks3, u_dets3 = linear_assignment(cost, self.args.match_thr)
 
             # matches3, u_tracks3, u_dets3 = iterative_assignment(
@@ -143,12 +145,15 @@ class Tracker(object):
 
             cost = build_cost_stage12(
                 final_tracks, dets_high_remain, [], 
-                0.0, self.args.w_motion, 
+                self.args.asso, 0.0, self.args.w_motion, 
                 self.args.w_vel, self.args.w_conf, self.args.w_shape,
                 self.frame_id, use_reid, self.args.dt)
             matches3, u_tracks3, u_dets3  = iterative_assignment(
                 cost, self.args.match_thr, self.args.reduce_step, 
                 final_tracks, dets_high_remain)
+            
+            # matches3, u_tracks3, u_dets3 = linear_assignment(cost, self.args.match_thr)
+
                 
         for t, d in matches3:
             update_feat = (final_tracks[t].state == TrackState.New)

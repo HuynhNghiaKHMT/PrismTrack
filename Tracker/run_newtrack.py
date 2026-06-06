@@ -30,40 +30,41 @@ def make_parser():
     parser.add_argument("--seed", type=float, default=10000)
 
     # Experiment Flags
-    parser.add_argument("--kf", type=str, default="new")   
-    parser.add_argument("--cmc", type=str, default="true")
-    parser.add_argument("--idcboost", type=str, default="true")
-    parser.add_argument("--reid", type=str, default="true")
-    parser.add_argument("--tpa", type=str, default="true")
-    parser.add_argument("--aflink", type=str, default="true")
-    parser.add_argument("--gbi", type=str, default="true")
+    parser.add_argument("--kf", type=str, default="new", help="kalman filter")
+    parser.add_argument("--cmc", type=str, default="true", help="camera motion compensation")
+    parser.add_argument("--idcboost", type=str, default="true", help="improve detection confidence boosting")
+    parser.add_argument("--asso", type=str, default="hmiou", help="function: iou/giou/diou/ciou/hmiou/wmiou")
+    parser.add_argument("--reid", type=str, default="true", help="re-identify")
+    parser.add_argument("--tpa", type=str, default="true", help="track perspective association")
+    parser.add_argument("--aflink", type=str, default="true", help="Post-processing: Appearance Free Link")
+    parser.add_argument("--gbi", type=str, default="true", help="post-processing: Gradient Boosting Interpolation")
 
     # Tracking Hyperparameters
-    parser.add_argument("--min_hits", type=int, default=3)
-    parser.add_argument("--min_ratio", type=float, default=1.6)
-    parser.add_argument("--min_box_area", type=float, default=100)
-    parser.add_argument("--max_age", type=float, default=30)
+    parser.add_argument("--min_hits", type=int, default=3, help="min hits to create track")
+    parser.add_argument("--min_ratio", type=float, default=1.6, help="min aspect ratio of bounding box")
+    parser.add_argument("--min_box_area", type=float, default=100, help="min area of bounding box")
+    parser.add_argument("--max_age", type=float, default=30, help="the frames for keep lost tracks")
 
     # Mutil-Stage Hyperparameters
-    parser.add_argument("--det_high_thr", type=float, default=0.6)
-    parser.add_argument("--det_low_thr", type=float, default=0.0)
-    parser.add_argument("--det_init_thr", type=float, default=0.7)
-    parser.add_argument("--match_thr", type=float, default=0.8)
+    parser.add_argument("--det_high_thr", type=float, default=0.6, help="matching threshold for tracking")
+    parser.add_argument("--det_low_thr", type=float, default=0.0, help="matching threshold for tracking")
+    parser.add_argument("--det_init_thr", type=float, default=0.7, help="matching threshold for tracking")
+    parser.add_argument("--match_thr", type=float, default=0.8, help="matching threshold for tracking")
 
     # IDCBoost Hyperparameters
-    parser.add_argument("--iou_limit", type=float, default=0.3)
-    parser.add_argument("--det_thr", type=float, default=0.6)
-    parser.add_argument("--boost_coef", type=float, default=0.65)
+    parser.add_argument("--iou_limit", type=float, default=0.3, help="matching threshold for tracking")
+    parser.add_argument("--det_thr", type=float, default=0.6, help="matching threshold for tracking")
+    parser.add_argument("--boost_coef", type=float, default=0.65, help="matching threshold for tracking")
 
     # Track Perspective Hyperparameters
-    parser.add_argument("--penalty_p", type=float, default=0.20)
-    parser.add_argument("--reduce_step", type=float, default=0.05)
+    parser.add_argument("--penalty_p", type=float, default=0.20, help="penalty for low confidence detections")
+    parser.add_argument("--reduce_step", type=float, default=0.05, help="reduce step for iterative association")
 
     # Weights Hyperparameters
-    parser.add_argument("--w_vel", type=float, default=0.15)
-    parser.add_argument("--w_conf", type=float, default=0.05)
-    parser.add_argument("--w_shape", type=float, default=0.15)
-    parser.add_argument("--w_motion", type=float, default=0.45)
+    parser.add_argument("--w_vel", type=float, default=0.15, help="the weight of Velocity in cost matrix")
+    parser.add_argument("--w_conf", type=float, default=0.05, help="the weight of Confidence in cost matrix")
+    parser.add_argument("--w_shape", type=float, default=0.15, help="the weight of Shape in cost matrix")
+    parser.add_argument("--w_motion", type=float, default=0.45, help="the weight of Motion in cost matrix")
 
     # Low sequence hyperparameters
     parser.add_argument("--hz", type=int, default=30) 

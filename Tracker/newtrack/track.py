@@ -53,7 +53,6 @@ class Track(BaseTrack):
         self.args = args
         self.box = detection[:4]  # x1y1x2y2
         self.score = detection[4]
-        self.new_score = detection[4]
 
         # Initialize 2
         self.delta_t = 3
@@ -73,18 +72,10 @@ class Track(BaseTrack):
         return max(1, current_frame_id - self.end_frame_id)
 
     def get_confidence(self, coef=0.9):
-        """
-        Logic từ BoostTrack++:
-        - Nếu track quá mới (< 7 frames): confidence thấp.
-        - Nếu track bị mất dấu: confidence giảm dần theo thời gian.
-        """
         n = 7
         if self.age < n:
             return coef ** (n - self.age)
-        
-        # Nếu vừa được update, time_since_update = 0 -> return 1.0 (hoặc 0.9^-1 tùy logic)
-        # Trong BoostTrack gốc dùng: coef ** (self.time_since_update - 1)
-        return coef ** max(0, self.time_since_update)
+        return coef ** self.time_since_update
 
     def update_features(self, feat, score):
         # Update and normalize
@@ -141,11 +132,11 @@ class Track(BaseTrack):
         if update_feat and self.args.reid:
             self.update_features(detection.feat, detection.score)
 
-        # current_track_confidence = self.get_confidence()
-        # self.score = current_track_confidence 
+        self.score = self.get_confidence()
+        # self.score = detection.score
         
         # Update history
-        self.history[frame_id] = [detection.box.copy(), detection.score, self.mean.copy(),
+        self.history[frame_id] = [detection.box.copy(), self.score, self.mean.copy(),
                                   self.covariance.copy(), self.feat.copy()]
 
         # Update velocity

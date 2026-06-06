@@ -53,6 +53,7 @@ class Track(BaseTrack):
         self.args = args
         self.box = detection[:4]  # x1y1x2y2
         self.score = detection[4]
+        self.track_conf = 1.0
 
         # Initialize 2
         self.delta_t = 3
@@ -78,11 +79,11 @@ class Track(BaseTrack):
         # delta_tau chính là khoảng cách thời gian
         return max(1, current_frame_id - self.end_frame_id)
 
-    def get_confidence(self, coef = 0.9):
+    def get_confidence(self, coef):
         n = 7
         if self.age < n:
             return coef ** (n - self.age)
-        return coef ** (self.time_since_update)
+        return coef ** self.time_since_update
 
     def update_features(self, feat, score):
         # Update and normalize
@@ -104,7 +105,8 @@ class Track(BaseTrack):
         self.mean, self.covariance = self.kalman_filter.initiate(self.cxcywh.copy())
 
         # Initiate history
-        self.history[frame_id] = [self.box.copy(), self.score.copy(), self.mean.copy(),
+        self.history[frame_id] = [self.box.copy(), self.score.copy(), self.track_conf,
+                                  self.mean.copy(),
                                   self.covariance.copy(), self.feat.copy()]
         
         self.pending_history.append((frame_id, self.box.copy(), self.score))
@@ -126,6 +128,8 @@ class Track(BaseTrack):
         self.age += 1
         self.time_since_update += 1
 
+        self.track_conf = self.get_confidence(coef=0.95)
+
     def update(self, frame_id, detection, update_feat=False):
         self.time_since_update = 0
 
@@ -142,14 +146,19 @@ class Track(BaseTrack):
         if update_feat and self.args.reid:
             self.update_features(detection.feat, detection.score)
 
-        self.score = self.get_confidence()
-        # self.score = detection.score
-        
+        # current_track_confidence = self.get_confidence(coef = detection.score)
+        # Update track confidence
+        self.track_conf = 1.0
+
+        # Update detector confidence
+        self.score = detection.score
+
         # Update history
-        self.history[frame_id] = [detection.box.copy(), self.score, self.mean.copy(),
+        self.history[frame_id] = [detection.box.copy(), detection.score, self.track_conf,
+                                  self.mean.copy(),
                                   self.covariance.copy(), self.feat.copy()]
         
-        self.pending_history.append((frame_id, detection.box.copy(), self.score))
+        self.pending_history.append((frame_id, detection.box.copy(), detection.score))
 
         # Update velocity
         self.velocity = np.zeros((4, 2))

@@ -2,15 +2,6 @@ import numpy as np
 from newtrack.utils import *
 from newtrack.kalman_filter_hybird import *
 
-iou_functions = {
-    "iou": iou_distance,
-    "ciou": ciou_distance,
-    "diou": diou_distance,
-    "giou": giou_distance,
-    "hmiou": hmiou_distance,
-    "wmiou": wmiou_distance,
-}
-
 # =========================================================
 # Hungarian (Linear Association)
 # =========================================================
@@ -30,64 +21,57 @@ def linear_assignment(cost_matrix, thresh):
 
     return matches, unmatched_a, unmatched_b
 
-def build_cost_stage1(tracks, dets, asso, frame_id, use_reid):
+def build_cost_stage1(tracks, dets, frame_id, use_reid):
     """
     C_final = W_1 * C_IoU + W_2 * C_Appr
     """
 
     # MHIoU/ DIoU cost
-    overlap = iou_functions.get(asso, iou_distance)
-    iou_sim, iou_dist = overlap(tracks, dets)
-
-    # Velocity / Confidence / Shape cost
-    motion = iou_dist.copy()
-
+    iou_sim, iou_dist = diou_distance(tracks, dets)
 
     # Appearance cost
     if use_reid:
-        alpha = 0.45
-        app = cos_distance(tracks, dets)
-        cost = alpha * motion + (1.0 - alpha) * app
+        # cosine
+        alpha = 0.5
+        cos_dist = cos_distance(tracks, dets)
+        cost = alpha * iou_dist + (1 - alpha) * cos_dist 
     else:
-        cost = motion
+        cost = iou_dist
+        
 
-    # Gating
-    cost[iou_sim <= 0.1] = 1e5
+    # MHIoU/ DIoU gate
+    cost[iou_sim <= 0.1] = 1.0
 
     return np.clip(cost, 0, 1)
 
-def build_cost_stage2(tracks, dets, asso, frame_id):
+def build_cost_stage2(tracks, dets, frame_id):
     """
     C_final = W_1 * C_IoU + W_2 * C_Vel + W_3 * Conf
     """
 
     # MHIoU/ DIoU cost
-    overlap = iou_functions.get(asso, iou_distance)
-    iou_sim, iou_dist = overlap(tracks, dets)
+    iou_sim, iou_dist = diou_distance(tracks, dets)
+    cost = iou_dist
 
-    # Velocity / Confidence / Shape cost
-    cost = iou_dist.copy()
+    cost += 0.1 * conf_distance_linear(tracks, dets)
+    cost += 0.05 * angle_distance(tracks, dets, frame_id, 3)
 
-    # Gating
-    cost[iou_sim <= 0.1] = 1e5
+    # MHIoU/ DIoU gate
+    cost[iou_sim <= 0.1] = 1.0
 
     return np.clip(cost, 0, 1)
 
-def build_cost_stage3(tracks, dets, asso, frame_id):
+def build_cost_stage3(tracks, dets, frame_id):
     """
     C_final = C_IoU
     """
 
     # MHIoU/ DIoU cost
-    overlap = iou_functions.get(asso, iou_distance)
-    iou_sim, iou_dist = overlap(tracks, dets)
+    iou_sim, iou_dist = diou_distance(tracks, dets)
+    cost = iou_dist
 
-    # Velocity / Confidence / Shape cost
-    cost = iou_dist.copy()
-
-
-    # Gating
-    cost[iou_sim <= 0.1] = 1e5
+    # MHIoU/ DIoU gate
+    cost[iou_sim <= 0.1] = 1.0
 
     return np.clip(cost, 0, 1)
 
@@ -135,41 +119,48 @@ def iterative_assignment(cost, match_thr, reduce_step, tracks, dets):
 
     return matches, u_tracks, u_dets
 
-def build_cost_stage12(tracks, dets_high, dets_low, asso, penalty_p, wm, wv, wc, ws, frame_id, use_reid, dt):
+def build_cost_stage12(tracks, dets_high, dets_low, penalty_p, wm, wv, wc, ws, frame_id, use_reid, dt):
     """
     C_motion = C_IoU +  W_1 * C_Appr + W_2 * C_Vel +  W_3 * C_Conf + W_4 * C_Shape
     C_final = W_1 * C_motion + W_2 * C_Appr
     """
 
-    dets = dets_high + dets_low
-    
-    # Overlap cost
-    overlap = iou_functions.get(asso)
-    iou_sim, iou_dist = overlap(tracks, dets)
+    dets = dets_high + dets_low 
+
+    track_conf = np.array([t.track_conf for t in tracks])
+    det_conf = np.array([d.score for d in dets])
+
+    conf_affinity = 1.0 - det_conf[None, :] * track_conf[:, None]
+
+    # MHIoU/ DIoU cost
+    iou_sim, iou_dist = diou_distance(tracks, dets)
 
     # Velocity / Confidence / Shape cost
     motion = iou_dist.copy()
     motion += wv * angle_distance(tracks, dets, frame_id, 3)
+    # motion += 0.3 * conf_distance_linear(tracks, dets)
     motion += ws * shape_similarity(tracks, dets)[1]
-    motion += wc * conf_distance_linear(tracks, dets)
 
-    #Appearance cost
+    motion *= (1.0 + 0.2 * conf_affinity)
+
+    # Appearance cost
     if use_reid:
+        alpha = wm
         app = cos_distance(tracks, dets)
-        cost = wm * motion + (1.0 - wm) * app
+        cost = alpha * motion + (1.0 - alpha) * app
     else:
         cost = motion
 
-
     # Penalty for dets_low, give priority to dets_high. Although the IoU of the Low-conf may be slightly higher.
-    cost[:, len(dets_high):] += penalty_p
+    cost[:, len(dets_high):] += penalty_p 
 
     # Gating
     cost[iou_sim <= 0.1] = 1e5
 
     return np.clip(cost, 0, 1)
 
-def build_cost_stage12_adapt(tracks, dets_high, dets_low, asso, penalty_p, wm, wv, wc, ws, frame_id, use_reid, dt):
+
+def build_cost_stage12_adapt(tracks, dets_high, dets_low, penalty_p, wm, wv, wc, ws, frame_id, use_reid, dt):
     """
     C_motion = C_IoU +  W_1 * C_Appr + W_2 * C_Vel +  W_3 * C_Conf + W_4 * C_Shape
     C_final = W_1 * C_motion + W_2 * C_Appr
@@ -178,8 +169,7 @@ def build_cost_stage12_adapt(tracks, dets_high, dets_low, asso, penalty_p, wm, w
     dets = dets_high + dets_low 
     
     # MHIoU/ DIoU cost
-    overlap = iou_functions.get(asso)
-    iou_sim, iou_dist = overlap(tracks, dets)
+    iou_sim, iou_dist = hmiou_distance(tracks, dets)
     cos_dist = cos_distance(tracks, dets)
 
     # Velocity / Confidence / Shape cost

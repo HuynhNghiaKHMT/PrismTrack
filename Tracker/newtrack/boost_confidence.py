@@ -205,6 +205,15 @@ def update_det_scores(dets, new_scores):
         dets[i].score = np.float32(new_scores[i])
     return dets
 
+# def cos_sim(tracks, dets):
+#     return 1 - cos_distance(tracks, dets).T
+
+# def angle_sim(tracks, dets, frame_id):
+#     return  1 - angle_distance(tracks, dets, frame_id).T
+
+# def score_sim(tracks, dets):
+#     return 1 - conf_distance_linear(tracks, dets).T
+
 def dlo_confidence_boost(dets, tracks, dlo_boost_coef, det_thresh, frame_id, use_rich_s, use_sb, use_vt, use_bbd):
     detections = dets_to_xyxy(dets)
     trackers = tracks_to_xyxy(tracks, frame_id)
@@ -227,9 +236,15 @@ def dlo_confidence_boost(dets, tracks, dlo_boost_coef, det_thresh, frame_id, use
         sbiou_sim  = soft_biou_distance(dets, tracks, frame_id)[0]
         # shape_sim = shape_similarity(detections, trackers)[0]
 
+        # app_sim = cos_sim(tracks, dets)
+        # vel_sim = angle_sim(tracks, dets, frame_id)
+        # conf_sim = score_sim(tracks, dets)
+
         # S = (dist_sim + shape_sim + sbiou_sim) / 3
         S = (sbiou_sim + dist_sim) / 2 
         # S = dist_sim
+
+        # S =  S = (sbiou_sim + dist_sim + app_sim) / 3
 
     else:
         S = iou_distance(dets, tracks)[0]

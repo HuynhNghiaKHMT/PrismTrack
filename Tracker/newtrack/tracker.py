@@ -1,4 +1,4 @@
-from trackers.cmc import *
+from utils.cmc import *
 from newtrack.utils import *
 from newtrack.track import *
 from newtrack.association import *
@@ -16,9 +16,10 @@ class Tracker(object):
         self.counter = TrackCounter()
 
         # Set global motion compensation model
+        # self.cmc = CMC(vid_name)
         self.cmc = CMC(vid_name) if args.cmc == "true" else None 
 
-    def update(self, dets, use_cmc, use_idcboost, use_reid, use_tpa):
+    def update(self, dets, use_cmc, use_idcboost, use_reid, use_tpa, use_ttr):
         self.frame_id += 1
 
         # Convert detections -> Track objects
@@ -26,7 +27,7 @@ class Tracker(object):
 
         # Boost confidence of detections
         if use_idcboost:
-            dets = IDCBoost(dets, self.tracks,  self.args.boost_coef, self.args.det_thr, self.args.iou_limit,
+            dets = IDCBoost(dets, self.tracks, self.args.boost_coef, self.args.det_thr, self.args.iou_limit,
                             self.frame_id, use_dlo = True, use_duo = True)
         
         # Split detections
@@ -103,7 +104,7 @@ class Tracker(object):
             matches, u_tracks, u_dets = iterative_assignment(
                 cost, self.args.match_thr, self.args.reduce_step, 
                 tracked_lost, dets_all)
-
+            
             # matches, u_tracks, u_dets = linear_assignment(cost, self.args.match_thr)
             
             for t, d in matches:
@@ -152,6 +153,7 @@ class Tracker(object):
                 final_tracks, dets_high_remain)
             
             # matches3, u_tracks3, u_dets3 = linear_assignment(cost, self.args.match_thr)
+
                 
         for t, d in matches3:
             update_feat = (final_tracks[t].state == TrackState.New)
@@ -182,9 +184,25 @@ class Tracker(object):
         # Clean removed
         self.tracks = [t for t in self.tracks if t.state != TrackState.Removed]
 
-        return [t for t in self.tracks if t.state == TrackState.Tracked]
+        if not use_ttr:
+            return [t for t in self.tracks if t.state == TrackState.Tracked]
 
-    def update_without_detections(self):
+        else:
+            outputs = []
+            for t in self.tracks:
+                # CASE 1: vừa được confirm → flush toàn bộ history
+                if t.is_confirmed and not t.has_flushed:
+                    for (f_id, box, score) in t.pending_history:
+                        outputs.append((f_id, t.track_id, box.copy(), score))
+                    t.pending_history = []  # clear sau khi flush
+                    t.has_flushed = True
+
+                # CASE 2: đã confirm từ trước → output bình thường
+                elif t.state == TrackState.Tracked:
+                    outputs.append((self.frame_id, t.track_id, t.box.copy(), t.score))
+            return outputs
+
+    def update_without_detections(self, use_ttr):
         # Update frame id
         self.frame_id += 1
 
@@ -211,5 +229,22 @@ class Tracker(object):
         # Filter out the removed tracks
         self.tracks = [t for t in self.tracks if t.state != TrackState.Removed]
 
-        return [t for t in self.tracks if t.state == TrackState.Tracked]
+        if not use_ttr:
+            return [t for t in self.tracks if t.state == TrackState.Tracked]
+
+        else:
+            outputs = []
+            for t in self.tracks:
+                # CASE 1: vừa được confirm → flush toàn bộ history
+                if t.is_confirmed and not t.has_flushed:
+                    for (f_id, box, score) in t.pending_history:
+                        outputs.append((f_id, t.track_id, box.copy(), score))
+                    t.pending_history = []  # clear sau khi flush
+                    t.has_flushed = True
+
+                # CASE 2: đã confirm từ trước → output bình thường
+                elif t.state == TrackState.Tracked:
+                    outputs.append((self.frame_id, t.track_id, t.box.copy(), t.score))
+            return outputs
+
     

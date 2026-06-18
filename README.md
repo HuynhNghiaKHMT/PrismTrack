@@ -1,34 +1,31 @@
-# SmartTrack
+# PrismTrack
 
-## Prepare
-**1. Downlodad datasets**
-  - MOT17: https://motchallenge.net/data/MOT17.zip
-  - MOT20: https://motchallenge.net/data/MOT20.zip
-  - DanceTrack: https://dancetrack.github.io/
+PrismTrack: Perspective-Aware Multi-Cue Association for Robust Multi-Object Tracking
 
-<br />
+## Abstract
+Multi-Object Tracking (MOT) remains challenging due to object occlusion, complex motions, and detection unreliability in crowded scenarios. This work introduces an enhanced MOT framework is proposed to integrate and optimize state-of-the-art components, specifically Improved Detection Confidence Boost (IDCBoost) and Track-Perspective-Based Association (TPA). The confidence boosting process is refined by introducing Bbox-Based Distance (BBD), a deterministic metric that compensates for the instability of conventional Mahalanobis distance under unreliable Kalman Filter predictions. Moreover, the TPA strategy is enhanced through a comprehensive cost matrix that adaptively fuses spatial overlap, appearance descriptors, velocity direction, and shape consistency. Through the elimination of redundant computational overhead while maintaining robust association logic, a superior balance between accuracy and efficiency is achieved. Extensive experiments demonstrate that the integrated pipeline reaches state-of-the-art performance on MOT17 and achieves highly competitive results within the leading group of Tracking-by-Detection (TBD) methods on both MOT20 and DanceTrack benchmarks.
 
-**2. Locate codes and datasets as below**
+## Pipeline
+
+<center>
+<img src="assets/prismtrack_pipeline.png" width="800"/>
+</center>
+
+## Directory structure
+
 ```bash
-Smart_Track
+PrismTrack
 ├── YOLOX/
-    ├── exps
-    ├── jsons
-    ├── weights
-    ├── yolox
     └── detect.py
 ├── FastReID/
-    ├── configs
-    ├── fastreid
-    ├── weights
-    ├── train_net.py
     └── ext_feats.py
-├── Track/
+├── Tracker/
     ├── AFLink/
-    ├── Trackers/
+    ├── CMC/
+    ├── prismtrack/
     ├── trackeval/
     ├── utils/
-    └── run.py/
+    └── run_prismtrack.py
 ├── dataset/
     ├── MOT17
     ├── MOT20
@@ -37,85 +34,117 @@ Smart_Track
     ├── 1. det
     ├── 2. det_feat
     └── 3. track
+├── assets/ 
+├── utils/ 
 ├── .gitignore
-├── requirements.txt
-└── README.md
+├── LICENSE
+├── README.md
+└── requirements.txt
 ```
 
-<br />
 
-**3. Run**
-1. YOLOX
-```
-# For MOT17 validation
-python YOLOX/detect.py --dataset 'MOT17' --mode 'val' --nms 0.80 -b 1 -d 1 --fp16 --fuse
-python YOLOX/detect.py --dataset 'MOT17' --mode 'val' --nms 0.95 -b 1 -d 1 --fp16 --fuse
+## Installation
+### Step1. Install PrismTrack
+```bash
+git clone https://github.com/HuynhNghiaKHMT/PrismTrack.git
+cd PrismTrack
 
-# For MOT17 test
-python YOLOX/detect.py --dataset 'MOT17' --mode 'test' --nms 0.80 -b 1 -d 1 --fp16 --fuse
-python YOLOX/detect.py --dataset 'MOT17' --mode 'test' --nms 0.95 -b 1 -d 1 --fp16 --fuse
+python -m venv venv
+venv\Scripts\activate
 
-# For MOT20 validation
-python YOLOX/detect.py --dataset 'MOT20' --mode 'val' --nms 0.80 -b 1 -d 1 --fp16 --fuse
-python YOLOX/detect.py --dataset 'MOT20' --mode 'val' --nms 0.95 -b 1 -d 1 --fp16 --fuse
-
-# For MOT20 test
-python YOLOX/detect.py --dataset 'MOT20' --mode 'test' --nms 0.80 -b 1 -d 1 --fp16 --fuse
-python YOLOX/detect.py --dataset 'MOT20' --mode 'test' --nms 0.95 -b 1 -d 1 --fp16 --fuse
-
-# For DanceTrack validation
-python YOLOX/detect.py --dataset 'Dance' --mode 'val' --nms 0.80 -b 1 -d 1 --fp16 --fuse
-python YOLOX/detect.py --dataset 'Dance' --mode 'val' --nms 0.95 -b 1 -d 1 --fp16 --fuse
+pip install -r requirements.txt
 ```
 
-2. FastReID
-``` 
-# For MOT17 validation
-python FastReID/ext_feats.py --dataset 'MOT17' --mode 'val' --nms 0.80
-python FastReID/ext_feats.py --dataset 'MOT17' --mode 'val' --nms 0.95
+### Step2. Install Dataset
+  - MOT17: https://motchallenge.net/data/MOT17.zip
+  - MOT20: https://motchallenge.net/data/MOT20.zip
+  - DanceTrack: https://dancetrack.github.io/
 
-# For MOT17 test
-python FastReID/ext_feats.py --dataset 'MOT17' --mode 'test' --nms 0.80  
-python FastReID/ext_feats.py --dataset 'MOT17' --mode 'test' --nms 0.95
+### Step3. Install Model Zoo
+  - YOLOX: https://github.com/kamkyu94/TrackTrack/tree/main/1.%20YOLOX
+  - FastReID: https://github.com/kamkyu94/TrackTrack/tree/main/2.%20FastReID
 
-# For MOT20 validation
-python FastReID/ext_feats.py --dataset 'MOT20' --mode 'val' --nms 0.80
-python FastReID/ext_feats.py --dataset 'MOT20' --mode 'val' --nms 0.95
+## Run
+### 1. YOLOX
+Tracking results will be created under "outputs/1. det/"
 
-# For MOT20 test
-python FastReID/ext_feats.py --dataset 'MOT20' --mode 'test' --nms 0.80  
-python FastReID/ext_feats.py --dataset 'MOT20' --mode 'test' --nms 0.95
+```bash
+# For MOT17 
+python YOLOX/detect.py --dataset 'MOT17' --mode 'val' --nms 0.70 -b 1 -d 1 --fp16 --fuse
+python YOLOX/detect.py --dataset 'MOT17' --mode 'test' --nms 0.70 -b 1 -d 1 --fp16 --fuse
 
-# For DanceTrack validation
-python FastReID/ext_feats.py --dataset 'Dance' --mode 'val' --nms 0.80
-python FastReID/ext_feats.py --dataset 'Dance' --mode 'val' --nms 0.95
+# For MOT20
+python YOLOX/detect.py --dataset 'MOT20' --mode 'val' --nms 0.70 -b 1 -d 1 --fp16 --fuse
+python YOLOX/detect.py --dataset 'MOT20' --mode 'test' --nms 0.70 -b 1 -d 1 --fp16 --fuse
 
-# For DanceTrack test
-python FastReID/ext_feats.py --dataset 'Dance' --mode 'test' --nms 0.80  
-python FastReID/ext_feats.py --dataset 'Dance' --mode 'test' --nms 0.95
+# For DanceTrack 
+python YOLOX/detect.py --dataset 'Dance' --mode 'val' --nms 0.70 -b 1 -d 1 --fp16 --fuse
+python YOLOX/detect.py --dataset 'Dance' --mode 'test' --nms 0.70 -b 1 -d 1 --fp16 --fuse
 ```
 
-3. Tracker
+### 2. FastReID
+Tracking results will be created under "outputs/2. det_feat/"
+
+```bash
+# For MOT17 
+python FastReID/ext_feats.py --dataset 'MOT17' --mode 'val' --nms 0.70
+python FastReID/ext_feats.py --dataset 'MOT17' --mode 'test' --nms 0.70  
+
+# For MOT20 
+python FastReID/ext_feats.py --dataset 'MOT20' --mode 'val' --nms 0.70
+python FastReID/ext_feats.py --dataset 'MOT20' --mode 'test' --nms 0.70  
+
+# For DanceTrack 
+python FastReID/ext_feats.py --dataset 'Dance' --mode 'val' --nms 0.70
+python FastReID/ext_feats.py --dataset 'Dance' --mode 'test' --nms 0.70  
 ```
-# For MOT17 validation
-python Tracker/run.py --dataset "MOT17" --mode "val"
 
-# For MOT17 test
-python Tracker/run.py --dataset "MOT17" --mode "test"
-python gen_test_file.py
+### 3. Tracker
+Tracking results will be created under "outputs/3. track/"
 
-# For MOT20 validation
-python Tracker/run.py --dataset "MOT20" --mode "val"
+```bash
+# For MOT17
+python Tracker/run_prismtrack.py --dataset "MOT17" --mode "val" 
+python Tracker/run_prismtrack.py --dataset "MOT17" --mode "test" 
 
-# For MOT20 test
-python Tracker/run.py --dataset "MOT20" --mode "test"
-python gen_test_file.py
+# For MOT20
+python Tracker/run_prismtrack.py --dataset "MOT20" --mode "val" 
+python Tracker/run_prismtrack.py --dataset "MOT20" --mode "test" 
 
-# For DanceTrack validation
-python Tracker/run.py --dataset "Dance" --mode "val"
-
-# For DanceTrack test
-python Tracker/run.py --dataset "Dance" --mode "test"
-python gen_test_file.py
+# For DanceTrack
+python Tracker/run_prismtrack.py --dataset "Dance" --mode "val" 
+python Tracker/run_prismtrack.py --dataset "Dance" --mode "test" 
 
 ```
+
+### 4. Summit
+```bash
+python Tracker/utils/gen_test_file.py 
+```
+
+## Benchmark Performance
+Results on MOT17, MOT20 and DanceTrack challenge test set
+
+| Dataset    | HOTA | IDF1 | MOTA | AssA | DetA | 
+| ---------- | ---- | ---- | ---- | -----| -----|
+| MOT17      | 00.0 | 00.0 | 00.0 | 00.0 | 00.0 | 
+| MOT20      | 00.0 | 00.0 | 00.0 | 00.0 | 00.0 |
+| DanceTrack | 00.0 | 00.0 | 00.0 | 00.0 | 00.0 |
+
+## Demo
+<img src="assets/demo.gif" alt="demo" style="zoom:34%;" />
+
+## Citation
+
+If you find this work useful, please consider to cite our paper:
+```
+@article{,
+  title={PrismTrack: Perspective-Aware Multi-Cue Association for Robust Multi-Object Tracking},
+  author={Huynh Trung Nghia},
+  year={2026}
+}
+```
+
+## Acknowledgement
+
+A large part of the code is borrowed from [TrackTrack](https://github.com/kamkyu94/TrackTrack), [BoostTrack](https://github.com/vukasin-stanojevic/BoostTrack), [HybridSORT](https://github.com/ymzis69/HybridSORT). Many thanks for their wonderful works.

@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.linalg
 
-
 chi2inv95 = {
     1: 3.8415,
     2: 5.9915,

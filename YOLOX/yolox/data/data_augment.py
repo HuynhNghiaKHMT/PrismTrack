@@ -149,7 +149,7 @@ def random_perspective(
 
 def _distort(image):
     def _convert(image, alpha=1, beta=0):
-        tmp = image.astype(float) * alpha + beta
+        tmp = image.astype(np.float32) * alpha + beta
         tmp[tmp < 0] = 0
         tmp[tmp > 255] = 255
         image[:] = tmp
@@ -188,9 +188,9 @@ def _mirror(image, boxes):
 
 def preproc(image, input_size, mean, std, swap=(2, 0, 1)):
     if len(image.shape) == 3:
-        padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
+        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=np.float32) * 114.0 
     else:
-        padded_img = np.ones(input_size) * 114.0
+        padded_img = np.ones(input_size, dtype=np.float32) * 114.0
     img = np.array(image)
     r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
     resized_img = cv2.resize(

@@ -3,8 +3,7 @@
 PrismTrack: Perspective-Aware Multi-Cue Association for Robust Multi-Object Tracking
 
 ## Abstract
-Multi-Object Tracking (MOT) remains challenging due to object occlusion, complex motions, and detection unreliability in crowded scenarios. This work introduces an enhanced MOT framework is proposed to integrate and optimize state-of-the-art components, specifically Improved Detection Confidence Boost (IDCBoost) and Track-Perspective-Based Association (TPA). The confidence boosting process is refined by introducing Bbox-Based Distance (BBD), a deterministic metric that compensates for the instability of conventional Mahalanobis distance under unreliable Kalman Filter predictions. Moreover, the TPA strategy is enhanced through a comprehensive cost matrix that adaptively fuses spatial overlap, appearance descriptors, velocity direction, and shape consistency. Through the elimination of redundant computational overhead while maintaining robust association logic, a superior balance between accuracy and efficiency is achieved. Extensive experiments demonstrate that the integrated pipeline reaches state-of-the-art performance on MOT17 and achieves highly competitive results within the leading group of Tracking-by-Detection (TBD) methods on both MOT20 and DanceTrack benchmarks.
-
+Multi-Object Tracking (MOT) remains challenging due to object occlusion, complex motions and detection unreliability in crowded scenarios. We propose an enhanced MOT framework integrating and optimizing state-of-the-art components, specifically Improved Detection Confidence Boost (IDCBoost) and Track-Perspective-Based Association (TPA). The confidence boosting process for recovering more potential detection candidates is refined by introducing Bbox-Based Distance (BBD), a deterministic metric that compensates for the instability of conventional Mahalanobis distance under unreliable Kalman Filter predictions. Moreover, the association strategy is enhanced through a comprehensive cost matrix that adaptively fuses spatial overlap, appearance descriptors, velocity direction, and shape consistency. Furthermore, a Tentative Track Recovery (TTR) strategy combined with a post-processing interpolation strategy is proposed to mitigate information loss and maintain trajectory continuity from the very inception of identity initialization. Extensive experiments demonstrate that the integrated pipeline reaches state-of-the-art performance on MOT17 and achieves highly competitive results within the leading group of Tracking-by-Detection (TBD) methods on both MOT20 and DanceTrack benchmarks.
 ## Pipeline
 
 <center>
@@ -15,6 +14,7 @@ Multi-Object Tracking (MOT) remains challenging due to object occlusion, complex
 
 ```bash
 PrismTrack
+├── Application/
 ├── YOLOX/
     └── detect.py
 ├── FastReID/
@@ -64,9 +64,13 @@ pip install -r requirements.txt
   - YOLOX: https://github.com/kamkyu94/TrackTrack/tree/main/1.%20YOLOX
   - FastReID: https://github.com/kamkyu94/TrackTrack/tree/main/2.%20FastReID
 
+### Step4. Install Results
+  - YOLOX: https://drive.google.com/drive/folders/14bTBqCVOXr-mWxVKEn58BWfTmm2paG3U?usp=sharing
+  - FastReID: https://drive.google.com/drive/folders/1g0k5r6J7n3X8Z2v9x4zQ0yWj1Fq5G3U?usp=sharing
+
 ## Run
 ### 1. YOLOX
-Tracking results will be created under "outputs/1. det/"
+Detection results will be created under "outputs/1. det/"
 
 ```bash
 # For MOT17 
@@ -83,7 +87,7 @@ python YOLOX/detect.py --dataset 'Dance' --mode 'test' --nms 0.70 -b 1 -d 1 --fp
 ```
 
 ### 2. FastReID
-Tracking results will be created under "outputs/2. det_feat/"
+Feature Extraction results will be created under "outputs/2. det_feat/"
 
 ```bash
 # For MOT17 
@@ -127,9 +131,9 @@ Results on MOT17, MOT20 and DanceTrack challenge test set
 
 | Dataset    | HOTA | IDF1 | MOTA | AssA | DetA | 
 | ---------- | ---- | ---- | ---- | -----| -----|
-| MOT17      | 00.0 | 00.0 | 00.0 | 00.0 | 00.0 | 
-| MOT20      | 00.0 | 00.0 | 00.0 | 00.0 | 00.0 |
-| DanceTrack | 00.0 | 00.0 | 00.0 | 00.0 | 00.0 |
+| MOT17      | 68.0 | 83.9 | 82.4 | 69.5 | 66.9 | 
+| MOT20      | 65.9 | 81.1 | 77.1 | 67.9 | 64.1 |
+| DanceTrack | 66.8 | 68.3 | 93.5 | 53.3 | 83.9 |
 
 ## Demo
 <img src="assets/demo.gif" alt="demo" style="zoom:34%;" />
@@ -138,8 +142,9 @@ Results on MOT17, MOT20 and DanceTrack challenge test set
 
 If you find this work useful, please consider to cite our paper:
 ```
-@article{,
+@article{...,
   title={PrismTrack: Perspective-Aware Multi-Cue Association for Robust Multi-Object Tracking},
+  conference={International Conference on Multimedia Analysis and Pattern Recognition (MAPR)},
   author={Huynh Trung Nghia},
   year={2026}
 }

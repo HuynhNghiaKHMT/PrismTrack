@@ -1,4 +1,5 @@
 import torch
+import time
 import numpy as np
 from tqdm import tqdm
 from yolox.utils import (is_main_process, postprocess,)
@@ -29,9 +30,15 @@ class DetEvaluator:
 
         # Initialize
         det_results = {}
+        model_latencies = []
+        frame_counter = 0
 
         # Detect
         for images, _, infos, ids in tqdm(self.dataloader):
+
+            # counter
+            frame_counter += 1
+
             # Get video name and frame index
             video_name = infos[4][0].split('/')[2]
             frame_id = int(infos[2].item())
@@ -40,6 +47,9 @@ class DetEvaluator:
             if video_name not in det_results.keys():
                 det_results[video_name] = {}
 
+            torch.cuda.synchronize()
+            start_model = time.time()
+
             # Detect
             # outputs: (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
             with torch.no_grad():
@@ -47,6 +57,9 @@ class DetEvaluator:
                 outputs = model(images)
                 outputs = postprocess(outputs, self.num_classes, self.conf_thresh, self.nms_thresh)[0]
 
+            torch.cuda.synchronize()
+            model_latencies.append(time.time() - start_model)
+            
             if outputs is not None:
                 # Get final confidence
                 outputs[:, 4] *= outputs[:, 5]
@@ -72,5 +85,12 @@ class DetEvaluator:
             # If there is no detection result
             else:
                 det_results[video_name][frame_id] = None
+
+        # Average latency
+        latency_model = (sum(model_latencies) / len(model_latencies)) * 1000
+        speed_model = 1000 / latency_model
+        print(f"[*] TOTAL PIPELINE DETECTION:")
+        print(f"  - Latency: {latency_model:.2f} ms/frame")
+        print(f"  - Speed: {speed_model:.2f} FPS")
 
         return det_results

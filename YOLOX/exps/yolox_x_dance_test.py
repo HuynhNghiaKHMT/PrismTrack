@@ -4,7 +4,7 @@ import torch.distributed as dist
 from yolox.exp import Exp as MyExp
 
 FILE = os.path.dirname(os.path.abspath(__file__))
-YOLOX_ROOT = os.path.abspath(os.path.join(FILE, ".."))
+ROOT = os.path.abspath(os.path.join(FILE, ".."))
 
 class Exp(MyExp):
     def __init__(self):
@@ -13,10 +13,9 @@ class Exp(MyExp):
         self.depth = 1.33
         self.width = 1.25
         self.exp_name = 'dance'
-        # self.train_ann = "jsons/dance_train.json"
-        # self.val_ann = "jsons/dance_test.json"
-        self.train_ann = os.path.join(YOLOX_ROOT, "jsons", "dance_train.json")
-        self.val_ann = os.path.join(YOLOX_ROOT, "jsons", "dance_test.json")
+
+        self.train_ann = os.path.join(ROOT, "jsons", "dance_train.json")
+        self.val_ann = os.path.join(ROOT, "jsons", "dance_test.json")
         self.input_size = (800, 1440)
         self.test_size = (800, 1440)
         self.random_size = (18, 32)
@@ -24,11 +23,10 @@ class Exp(MyExp):
         self.print_interval = 20
         self.eval_interval = 5
         self.test_conf = 0.1
-        self.nmsthre = 0.95
+        self.nmsthre = 0.70
         self.no_aug_epochs = 10
         self.basic_lr_per_img = 0.001 / 64.0
         self.warmup_epochs = 1
-        # self.data_dir = '../../dataset/'
         self.data_dir = os.path.join("dataset")
 
     def get_data_loader(self, batch_size, is_distributed, no_aug=False):

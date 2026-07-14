@@ -17,7 +17,7 @@ def make_parser():
 
     # Can be changed
     parser.add_argument("--dataset",default="MOT17",type=str,help="dataset for eval")
-    parser.add_argument("--mode",default="val",type=str,help="mode for eval")
+    parser.add_argument("--mode",default="test",type=str,help="mode for eval")
 
     parser.add_argument("-f", "--exp_file",
                         default= "YOLOX/exps/yolox_x_mot17_val.py",
@@ -26,7 +26,7 @@ def make_parser():
                         default="YOLOX/weights/mot17_half.pth.tar",
                         type=str, help="ckpt for eval")
     parser.add_argument("-n", "--exp_name",
-                        default="outputs/1.det/mot17_val_0.80.pickle",
+                        default="outputs/1.det/mot17_val_0.70.pickle",
                         type=str, help="experiment name")
 
     # Fixed
@@ -49,7 +49,7 @@ def make_parser():
 
     # det args
     parser.add_argument("--conf", default=0.1, type=float, help="test conf")
-    parser.add_argument("--nms", default=0.80, type=float, help="test nms threshold")
+    parser.add_argument("--nms", default=0.70, type=float, help="test nms threshold")
     parser.add_argument("--tsize", default=None, type=int, help="test img size")
     parser.add_argument("--min_box_area", default=100, type=int, help="filter out tiny boxes")
     parser.add_argument("--seed", default=10000, type=int, help="eval seed")
@@ -81,14 +81,12 @@ def main(exp, args, num_gpu):
         exp.test_size = (args.tsize, args.tsize)
 
     model = exp.get_model()
-    # torch.cuda.set_device(rank)
-    # model.cuda(rank)
 
     if num_gpu > 0:
         torch.cuda.set_device(rank)
         model.cuda(rank)
     else:
-        model.cpu() # Đảm bảo model chạy trên CPU
+        model.cpu() 
 
     model.eval()
 
@@ -98,10 +96,15 @@ def main(exp, args, num_gpu):
         loc = f"cuda:{rank}" if num_gpu > 0 else "cpu"
         ckpt = torch.load(ckpt_file, map_location=loc)
         model.load_state_dict(ckpt["model"])
-    if is_distributed:
-        model = DDP(model, device_ids=[rank])
+
     if args.fuse:
         model = fuse_model(model)
+
+    if args.fp16 and num_gpu > 0:
+        model = model.half()
+
+    if is_distributed:
+        model = DDP(model, device_ids=[rank])
 
     val_loader = exp.get_eval_loader(args.batch_size, is_distributed, args.test)
     evaluator = DetEvaluator(args=args, dataloader=val_loader, img_size=exp.test_size, conf_thresh=exp.test_conf,
@@ -117,15 +120,18 @@ def main(exp, args, num_gpu):
 if __name__ == "__main__":
     args = make_parser().parse_args()
 
-    # ================= AUTO RESOLVE FROM dataset & mode =================
-    dataset = args.dataset.lower()      # MOT20 -> mot20
-    mode = args.mode.lower()             # val / test
+    # Auto resolve from dataset & mode
+    dataset = args.dataset.lower()     
+    mode = args.mode.lower()  
+    nms = f"{args.nms:.2f}"
 
     args.exp_file = f"YOLOX/exps/yolox_x_{dataset}_{mode}.py"
-    ckpt_suffix = "_half" if mode == "val" else ""
-    args.ckpt = f"YOLOX/weights/{dataset}{ckpt_suffix}.pth.tar"
-    args.exp_name = f"outputs/1. det/{dataset}_{mode}_{args.nms:.2f}.pickle"
-    # ====================================================================
+    args.exp_name = f"outputs/1. det/{dataset}_{mode}_{nms}.pickle"
+    if 'MOT' in args.dataset:
+        ckpt_suffix = "_half" if mode == "val" else ""
+        args.ckpt = f"YOLOX/weights/{dataset}{ckpt_suffix}.pth.tar"
+    else: 
+        args.ckpt = f"YOLOX/weights/{dataset}.pth.tar"
 
     exp = get_exp(args.exp_file)
     exp.merge(args.opts)
@@ -133,14 +139,11 @@ if __name__ == "__main__":
     # num_gpu = torch.cuda.device_count() if args.devices is None else args.devices
     # assert num_gpu <= torch.cuda.device_count()
 
-    # --- ĐOẠN SỬA ĐỔI ---
-    # Kiểm tra xem máy có GPU không
+    # Check if your computer has a GPU.
     cuda_available = torch.cuda.is_available()
     
     if cuda_available and args.devices > 0:
-        # Lấy số lượng GPU thực tế có trên máy
         actual_gpu_count = torch.cuda.device_count()
-        # Số lượng GPU sử dụng sẽ là giá trị nhỏ hơn giữa yêu cầu và thực tế
         num_gpu = min(actual_gpu_count, args.devices)
         device = "cuda"
     else:

@@ -23,7 +23,7 @@ class Exp(BaseExp):
 
         # ---------------- dataloader config ---------------- #
         # set worker to 4 for shorter dataloader init time
-        self.data_num_workers = 4
+        self.data_num_workers = 4 # For Dance: 2, For MOT: 4
         self.input_size = (640, 640)
         self.random_size = (14, 26)
         self.train_ann = "instances_train2017.json"
@@ -131,7 +131,10 @@ class Exp(BaseExp):
             mosaic=not no_aug,
         )
 
-        dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True}
+        dataloader_kwargs = {
+            "num_workers": self.data_num_workers, 
+            "pin_memory":  True # For Dance: False, For MOT: True
+        }
         dataloader_kwargs["batch_sampler"] = batch_sampler
         train_loader = DataLoader(self.dataset, **dataloader_kwargs)
 
@@ -222,7 +225,7 @@ class Exp(BaseExp):
 
         dataloader_kwargs = {
             "num_workers": self.data_num_workers,
-            "pin_memory": True,
+            "pin_memory": True, # For Dance: False, For MOT: True
             "sampler": sampler,
         }
         dataloader_kwargs["batch_size"] = batch_size

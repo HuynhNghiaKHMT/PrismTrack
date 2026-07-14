@@ -1,3 +1,5 @@
+
+
 # PrismTrack
 
 PrismTrack: Perspective-Aware Multi-Cue Association for Robust Multi-Object Tracking
@@ -136,7 +138,7 @@ Results on MOT17, MOT20 and DanceTrack challenge test set
 | DanceTrack | 66.8 | 68.3 | 93.5 | 53.3 | 83.9 |
 
 ## Demo
-<img src="assets/demo.gif" alt="demo" style="zoom:34%;" />
+https://github.com/user-attachments/assets/b940d1d5-c965-4e20-bf39-4bf73033c63f
 
 ## Citation
 

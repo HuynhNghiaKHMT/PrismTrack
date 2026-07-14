@@ -1,8 +1,8 @@
 from utils.cmc import *
-from newtrack.utils import *
-from newtrack.track import *
-from newtrack.association import *
-from newtrack.boost_confidence import *
+from prismtrack.utils import *
+from prismtrack.track import *
+from prismtrack.association import *
+from prismtrack.boost_confidence import *
 
 class Tracker(object):
     def __init__(self, args, vid_name):

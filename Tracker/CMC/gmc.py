@@ -82,18 +82,24 @@ class GMC:
         self.initializedFirstFrame = False
 
     def apply(self, raw_frame, detections=None):
+        start_time = time.time()
+
         if self.method == 'orb' or self.method == 'sift':
-            return self.applyFeaures(raw_frame, detections)
+            H =  self.applyFeaures(raw_frame, detections)
         elif self.method == 'ecc':
-            return self.applyEcc(raw_frame, detections)
+            H =  self.applyEcc(raw_frame, detections)
         elif self.method == 'sparseOptFlow':
-            return self.applySparseOptFlow(raw_frame, detections)
+            H =  self.applySparseOptFlow(raw_frame, detections)
         elif self.method == 'file':
-            return self.applyFile(raw_frame, detections)
+            H =  self.applyFile(raw_frame, detections)
         elif self.method == 'none':
-            return np.eye(2, 3)
+            H =  np.eye(2, 3)
         else:
-            return np.eye(2, 3)
+            H =  np.eye(2, 3)
+    
+        end_time = time.time()
+
+        return H, (end_time - start_time)
 
     def applyEcc(self, raw_frame, detections=None):
 
@@ -344,7 +350,7 @@ def make_parser():
     parser.add_argument("--mode", type=str, default="val", help="mode for eval")
     parser.add_argument("--method", type=str, default="sparseOptFlow", help="sparseOptFlow, ecc, orb")
     parser.add_argument("--dataset", type=str, default="MOT17", help="dataset for eval")
-    parser.add_argument("--data_path", type=str, default="dataset/MOT17/test/")
+    parser.add_argument("--data_path", type=str, default="dataset/MOT17/train/")
 
     return parser
 
@@ -356,6 +362,9 @@ def run_cmc(args):
 
     args.data_path = f"dataset/{dataset}/{split}/"
     data_dir = os.path.join(args.data_path)
+
+    total_time = 0.0
+    total_frames = 0
 
     for vid in sorted(os.listdir(data_dir)):
         ## Only use FRCNN files
@@ -371,13 +380,20 @@ def run_cmc(args):
             image_path = os.path.join(img_dir, image)
             img = cv2.imread(image_path)
 
-            _ = gmc.apply(img, None)
+            _, frame_latency = gmc.apply(img, None)
 
+            total_time += frame_latency
+            total_frames += 1
+
+    cmc_latency = (total_time / total_frames) * 1000
+    cmc_speed = 1000 / cmc_latency
+    print(f"[*] TOTAL PIPELINE CMC:")
+    print(f"  - Latency: {cmc_latency:.2f} ms/frame")
+    print(f"  - Speed  : {cmc_speed:.2f} FPS")
 
 def main():
     args = make_parser().parse_args()
     run_cmc(args)
-    print("Tạo thành công file cmc")
 
 if __name__ == "__main__":
     main()

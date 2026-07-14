@@ -1,6 +1,6 @@
 import numpy as np
 from copy import deepcopy
-from newtrack.utils import *
+from prismtrack.utils import *
 
 """
 Script modified from BoostTrack++: 
@@ -232,19 +232,12 @@ def dlo_confidence_boost(dets, tracks, dlo_boost_coef, det_thresh, frame_id, use
 
     if use_rich_s:
         # sbiou_sim, sbiou_dist = soft_biou_distance(dets, tracks, frame_id)
-        # shape_sim, shape_dist = shape_similarity(detections, trackers)
+        # shape_sim, shape_dist = shape_similarity(dets, tracks)
         sbiou_sim  = soft_biou_distance(dets, tracks, frame_id)[0]
-        # shape_sim = shape_similarity(detections, trackers)[0]
-
-        # app_sim = cos_sim(tracks, dets)
-        # vel_sim = angle_sim(tracks, dets, frame_id)
-        # conf_sim = score_sim(tracks, dets)
+        # shape_sim = shape_similarity(dets, tracks)[0]
 
         # S = (dist_sim + shape_sim + sbiou_sim) / 3
         S = (sbiou_sim + dist_sim) / 2 
-        # S = dist_sim
-
-        # S =  S = (sbiou_sim + dist_sim + app_sim) / 3
 
     else:
         S = iou_distance(dets, tracks)[0]

@@ -28,10 +28,10 @@ class Evaluator:
             'TIME_PROGRESS': True,
             'DISPLAY_LESS_PROGRESS': True,
 
-            'OUTPUT_SUMMARY': True,
+            'OUTPUT_SUMMARY': False, # True
             'OUTPUT_EMPTY_CLASSES': True,  # If False, summary files are not output for classes with no detections
-            'OUTPUT_DETAILED': True,
-            'PLOT_CURVES': True,
+            'OUTPUT_DETAILED': False, # True
+            'PLOT_CURVES': False, # True
         }
         return default_config
 

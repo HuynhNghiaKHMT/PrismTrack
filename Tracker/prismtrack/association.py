@@ -1,6 +1,6 @@
 import numpy as np
-from newtrack.utils import *
-from newtrack.kalman_filter_hybird import *
+from prismtrack.utils import *
+from prismtrack.kalman_filter_hybird import *
 
 iou_functions = {
     "iou": iou_distance,

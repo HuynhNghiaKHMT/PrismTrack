@@ -1,7 +1,7 @@
 import numpy as np
-from newtrack.utils import get_prev_box
-from newtrack.kalman_filter import KalmanFilter
-from newtrack.kalman_filter_hybird import HybridKalmanFilter
+from prismtrack.utils import get_prev_box
+from prismtrack.kalman_filter import KalmanFilter
+from prismtrack.kalman_filter_hybird import HybridKalmanFilter
 
 def get_vel(b_1, b_2):
     # Get normalization factors

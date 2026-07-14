@@ -5,12 +5,13 @@ import argparse
 import numpy as np
 import random
 import time
-from newtrack.tracker import Tracker
-from utils.etc_new import *
-from newtrack.utils import *
+from tqdm import tqdm
+from prismtrack.tracker import Tracker
+from prismtrack.utils import *
 from AFLink.AppFreeLink import *
 from AFLink.model import PostLinker
 from AFLink.dataset import LinkData
+from utils.etc_new import *
 from utils.gbi import gb_interpolation
 
 """
@@ -36,6 +37,7 @@ def make_parser():
     parser.add_argument("--asso", type=str, default="hmiou", help="function: iou/giou/diou/ciou/hmiou/wmiou")
     parser.add_argument("--reid", type=str, default="true", help="re-identify")
     parser.add_argument("--tpa", type=str, default="true", help="track perspective association")
+    parser.add_argument("--ttr", type=str, default="true", help="tentative Track Recovery")
     parser.add_argument("--aflink", type=str, default="true", help="Post-processing: Appearance Free Link")
     parser.add_argument("--gbi", type=str, default="true", help="post-processing: Gradient Boosting Interpolation")
 
@@ -67,6 +69,7 @@ def make_parser():
     parser.add_argument("--w_motion", type=float, default=0.45, help="the weight of Motion in cost matrix")
 
     # Low sequence hyperparameters
+    parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--hz", type=int, default=30) 
     parser.add_argument("--dt", type=int, default=1) 
 
@@ -75,11 +78,12 @@ def make_parser():
 def str2bool(v):
     return v.lower() == "true"
 
-def track_experiment(args, detections, data_path, result_folder, mode):
+def track_experiment(args, detections, data_path, result_folder, mode, pbar=None):
     use_cmc = str2bool(args.cmc)
     use_idcboost = str2bool(args.idcboost)
     use_reid = str2bool(args.reid)
     use_tpa = str2bool(args.tpa)
+    use_ttr = str2bool(args.ttr)
     total_time, total_count = 0, 0
     
     for vid_name in detections.keys():
@@ -91,10 +95,11 @@ def track_experiment(args, detections, data_path, result_folder, mode):
         for s_i in seq_info.readlines():
             if 'frameRate' in s_i:
                 fps = int(s_i.split('=')[-1])   
+                args.fps = fps
                 args.dt = max(1, int(round(fps / args.hz)))
                 args.min_hits = 1 if args.dt != 1 else 3
                 args.max_time_lost = int(fps * 2)
-                print(f"[vid_name] {vid_name} [DET] fps {fps} [max_time_lost] {args.max_time_lost}")
+                # print(f"{vid_name} fps {fps}")
             if 'imWidth' in s_i:
                 args.img_w = int(s_i.split('=')[-1])
             if 'imHeight' in s_i:
@@ -102,37 +107,67 @@ def track_experiment(args, detections, data_path, result_folder, mode):
 
         tracker = Tracker(args, vid_name)
         results = []
+        results_dict = {}
 
         for frame_id in detections[vid_name].keys():
+            torch.cuda.synchronize()
             start = time.time()
 
             det = detections[vid_name][frame_id]
 
             if (frame_id - 1) % args.dt == 0 and det is not None:
-                track_results = tracker.update(det, use_cmc, use_idcboost, use_reid, use_tpa)
+                track_results = tracker.update(det, use_cmc, use_idcboost, use_reid, use_tpa, use_ttr)
             else:
-                track_results = tracker.update_without_detections()
+                track_results = tracker.update_without_detections(use_ttr)
             
+            torch.cuda.synchronize()
             total_time += time.time() - start
             total_count += 1
 
-            # Filter results
-            x1y1whs, track_ids, scores = [], [], []
-            for t in track_results:
-                # Check aspect ratio
-                if 'MOT' in data_path and t.x1y1wh[2] / t.x1y1wh[3] > args.min_ratio:
-                    continue
-                # Check track id, min area
-                if t.track_id > 0 and t.x1y1wh[2] * t.x1y1wh[3] > args.min_box_area:
-                    x1y1whs.append(t.x1y1wh)
-                    track_ids.append(t.track_id)
-                    scores.append(t.score)
+            if not use_ttr:
+                # Filter results
+                x1y1whs, track_ids, scores = [], [], []
+                for t in track_results:
+                    # Check aspect ratio
+                    if 'MOT' in data_path and t.x1y1wh[2] / t.x1y1wh[3] > args.min_ratio:
+                        continue
+                    # Check track id, min area
+                    if t.track_id > 0 and t.x1y1wh[2] * t.x1y1wh[3] > args.min_box_area:
+                        x1y1whs.append(t.x1y1wh)
+                        track_ids.append(t.track_id)
+                        scores.append(t.score)
 
-            results.append([frame_id, track_ids, x1y1whs, scores])
+                results.append([frame_id, track_ids, x1y1whs, scores])
+            else:
+                # Filter results
+                for (f_id, track_id, box, score) in track_results:
+                    if f_id not in results_dict:
+                        results_dict[f_id] = [[], [], []]
 
+                    x1, y1, x2, y2 = box
+                    w, h = x2 - x1, y2 - y1
+
+                    if 'MOT' in data_path and w / h > args.min_ratio:
+                        continue
+
+                    if track_id > 0 and w * h > args.min_box_area:
+                        results_dict[f_id][0].append(track_id)
+                        results_dict[f_id][1].append([x1, y1, w, h])
+                        results_dict[f_id][2].append(score)
+            
+            pbar.update(1)
+
+        if use_ttr:
+            results = []
+            for f_id in sorted(results_dict.keys()):
+                ids, boxes, scores = results_dict[f_id]
+                results.append([f_id, ids, boxes, scores])
+    
         # Write Results
         result_filename = os.path.join(result_folder, f'{vid_name}.txt')
         write_results(result_filename, results)
+
+    pbar.close()
 
     return total_time, total_count
 
@@ -161,13 +196,23 @@ def run():
     with open(args.pickle_path, 'rb') as f:
         detections = pickle.load(f)
 
+    # Progress bar
+    total_frames = sum(len(detections[vid]) for vid in detections)
+    pbar = tqdm(total=total_frames, desc="Tracking", unit="frame", dynamic_ncols=True)
+
     # Run Tracking
-    total_time, total_count = track_experiment(args, detections, args.data_path, result_folder, args.mode)
+    track_time, track_count = track_experiment(args, detections, args.data_path, result_folder, args.mode, pbar)
 
     # Post-processing
     print('Running post-processing...')
     use_aflink = str2bool(args.aflink)
     use_gbi = str2bool(args.gbi)
+
+    # result_files = [f for f in os.listdir(result_folder)if f.endswith(".txt")]
+    # for result_file in tqdm(result_files, desc="Post Processing", unit="seq"):
+
+    torch.cuda.synchronize()
+    start_post_time = time.time()
 
     for result_file in os.listdir(result_folder):
         if not result_file.endswith(".txt"): continue
@@ -179,26 +224,49 @@ def run():
         import shutil
         shutil.copy(path_in, path_out)
 
-        # Link (AFLink)
+        # Appearance Free Link (AFLink)
         if use_aflink and 'Dance' in args.dataset:
             # print(f"Running AFLink on {result_file}...")
-            linker = AFLink(path_out, path_out, model=model, dataset=aflink_dataset,
+            linker = AFLink(path_in=path_out, path_out=path_out, model=model, dataset=aflink_dataset,
                             thrT=(0, 20), thrS=100, thrP=0.05)
             linker.link()
 
-        # Gaussian Interpolation (GBI)
+        # Gradient Boosting Interpolation (GBI)
         if use_gbi and 'MOT' in args.dataset:
             # print(f"Running GBI on {result_file}...")
             gb_interpolation(path_out, path_out, interval=30, tau=12)
+
+    torch.cuda.synchronize()
+    post_time = time.time() - start_post_time
+
+    latency_track = (track_time / track_count) * 1000
+    speed_track = 1000 / latency_track
+    print(f"[*] ONLINE TRACKER ONLY:")
+    print(f"  - Latency : {latency_track:.2f} ms/frame")
+    print(f"  - Speed   : {speed_track:.2f} FPS")
+    
+    latency_post = (post_time / track_count) * 1000
+    speed_post = 1000 / latency_post
+    print(f"[*] OFFLINE POST-PROCESSING ONLY:")
+    print(f"  - Latency: {latency_post:.2f} ms/frame")
+    print(f"  - Speed: {speed_post:.2f} FPS")
+    
+    total_latency = latency_track + latency_post
+    print(f"[*] TOTAL PIPELINE TRACKER:")
+    print(f"  - Latency : {total_latency:.2f} ms/frame")
+    print(f"  - Speed: {1000 / total_latency:.2f} FPS")
 
     # Evaluation
     if args.mode == 'val':
         print('Evaluating...')
         evaluate(args, trackers_to_eval + '_post', args.dataset)
 
-    print(f"FPS: {total_count / total_time:.2f}")
 
 if __name__ == "__main__":
+
+    import tempfile
+    print("TEMP DIR:", tempfile.gettempdir())
+
     args = make_parser().parse_args()
 
     random.seed(int(args.seed))
